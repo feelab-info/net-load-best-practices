@@ -19,8 +19,7 @@ pip install -r requirements.txt
 
 
 ## Evaluation
-
-To evaluate the results follow the procedure in :
+- After training the models and obtaining the results, the next step is to evaluate those results. You can follow the procedure outlined in the  [SmartGridcom-Results-Analysis](https://github.com/feelab-info/net-load-best-practices/blob/main/notebook/SmartGridcom-Results-Analysis.ipynb) notebook to analyze and evaluate the obtained outcomes.
 
 ## Results
 
