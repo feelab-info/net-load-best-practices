@@ -16,7 +16,8 @@ pip install -r requirements.txt
 
 ## Training
 
-To train the model(s) in the paper, run this command:
+- To train the model(s) first optimize hyper-parameters of deep-learning based forecasting model by running the code in []()
+- Then run the code in the []() notebook to run to train the model for the all experiments.
 
 ```train
 python train.py --input-data <path_to_data> --alpha 10 --beta 20
