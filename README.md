@@ -15,15 +15,10 @@ pip install -r requirements.txt
 >📋  Describe how to set up the environment, e.g. pip/conda/docker commands, download datasets, etc...
 
 ## Training
+-To begin training the model(s), start by optimizing the hyperparameters of the deep-learning-based forecasting model. This can be achieved by executing the code provided in the [SmartGridcomHyper](https://github.com/feelab-info/net-load-best-practices/blob/main/notebook/SmartGridcomHyper-params.ipynb).
 
-- To train the model(s) first optimize hyper-parameters of deep-learning based forecasting model by running the code in [SmartGridcomExperiment](https://github.com/feelab-info/net-load-best-practices/blob/main/notebook/SmartGridcomExperiment.ipynb
-- Then run the code in the [SmartGridcomExperiment](https://github.com/feelab-info/net-load-best-practices/blob/main/notebook/SmartGridcomExperiment.ipynb) notebook to run to train the model for the all experiments.
+- Once the hyperparameters have been optimized, proceed to train the model for all experiments. This can be done by running the code available in the [SmartGridcomExperiment](https://github.com/feelab-info/net-load-best-practices/blob/main/notebook/SmartGridcomExperiment.ipynb) notebook.
 
-```train
-python train.py --input-data <path_to_data> --alpha 10 --beta 20
-```
-
->📋  Describe how to train the models, with example commands on how to train the models in your paper, including the full training procedure and appropriate hyperparameters.
 
 ## Evaluation
 
