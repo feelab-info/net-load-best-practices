@@ -5,7 +5,7 @@ import os
 from copy import deepcopy
 import numpy as np
 import pandas as pd
-from net.utils import   get_latest_checkpoint
+# from net.utils import   get_latest_checkpoint
 from net.evaluation import evaluate_point_forecast
 from orbit.constants.constants import TimeSeriesSplitSchemeKeys
 from orbit.diagnostics.backtest import  TimeSeriesSplitter

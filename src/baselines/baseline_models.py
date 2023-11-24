@@ -10,6 +10,12 @@ import torch
 from net.evaluation import evaluate_point_forecast
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from statsforecast import StatsForecast
+from neuralforecast.models import TimesNet
+from neuralforecast import NeuralForecast
+from neuralforecast.losses.pytorch import MSE
+from neuralforecast.auto import AutoTimesNet
+import optuna
+optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable training prints from optuna
 
 
 
@@ -42,6 +48,9 @@ class BaselineDNNModel(object):
             
         if hparams['encoder_type'] in ['CATBOOST', 'RF', 'LREGRESS']:
             model = self.get_conventional_baseline_model(hparams)
+
+        if hparams['encoder_type'] in ['TimesNet', 'AutoTimesNet']:
+            model = self.get_neuralforecast_baseline(hparams)
         return model
             
     def get_hyparams(self, trial, hparams):
@@ -92,6 +101,47 @@ class BaselineDNNModel(object):
         return model
     
     
+    def get_neuralforecast_baseline(self, hparams):
+        futr_exog_list = ['dayofweek', 'hour', 'day', 'month']
+        hist_exog_list = ['dayofweek', 'hour', 'day', 'month']
+
+        if hparams['encoder_type']=='TimesNet':
+            timesnet = TimesNet(
+                        h=hparams['horizon'],
+                        input_size=hparams['window_size'],
+                        hidden_size = hparams['hidden_size'],
+                        conv_hidden_size = hparams['conv_hidden_size'],
+                        learning_rate=hparams['lr'],
+                        batch_size=hparams['batch_size'],
+                        dropout=hparams['dropout'],
+                        loss=MSE(),
+                        futr_exog_list=futr_exog_list,
+                        hist_exog_list=hist_exog_list,
+                        max_steps=hparams['max_epochs'],
+                        # val_check_steps=50
+                        # scaler_type='standard',
+                        early_stop_patience_steps=3
+                    )
+            model = NeuralForecast(
+                        models=[timesnet],
+                        freq='M'
+                    )
+            
+        if hparams['encoder_type']=='AutoTimesNet':
+            auto_timesnet = AutoTimesNet(
+                        h=hparams['horizon'],
+                        loss=MSE(),
+                        config=self.get_timesnet_search_params,
+                        search_alg=optuna.samplers.TPESampler(),
+                        backend='optuna',
+                        num_samples=10
+                    )
+            model = NeuralForecast(
+                        models=[auto_timesnet],
+                        freq='M'
+                    )
+
+        return model
 
     
     def get_statistical_baselines(self, hparams):
@@ -125,7 +175,7 @@ class BaselineDNNModel(object):
 
 
         # detect if a GPU is available
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() or torch.backends.mps.is_available():
             pl_trainer_kwargs = {
                 "accelerator": "gpu",
                  "devices": [0],
@@ -474,7 +524,11 @@ class BaselineDNNModel(object):
         return params
     
     
-    
+    def get_timesnet_search_params(self, trial):
+        return {
+            'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5),
+        }
     
     
     

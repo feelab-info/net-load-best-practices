@@ -85,6 +85,10 @@ class DeterministicBaselineForecast(object):
         elif self.hparams['encoder_type'] in ['MSTL', 'SeasonalNaive', 'AutoARIMA']:
             train_df=self.transform_darts_data(self.train, self.target_columns)
             model.fit(train_df)
+
+        elif self.hparams['encoder_type'] in ['TimesNet']:
+            train_df=self.transform_darts_data(self.train, self.target_columns)
+            model.fit(df=train_df)
             
         train_walltime = default_timer() - start_time
 
@@ -113,6 +117,7 @@ class DeterministicBaselineForecast(object):
             
         elif self.hparams['encoder_type'] in ['CATBOOST',  "RF", 'LREGRESS']:
             pred = model.predict(len(self.test), future_covariates=self.test_cov).values()
+            
         elif self.hparams['encoder_type'] in ['MSTL', 'SeasonalNaive', 'AutoARIMA']:
             pred = model.predict(h=len(self.test))
             pred = pred[self.hparams['encoder_type']].values
@@ -126,10 +131,24 @@ class DeterministicBaselineForecast(object):
         
         
     def prepare_data(self, experiment, train_df, test_df, val_df=None):
+
+        # Handle for Mac GPU
+        if torch.backends.mps.is_available():
+            train_df[train_df.select_dtypes(np.float64).columns] = train_df.select_dtypes(np.float64).astype(np.float32)
+            test_df[test_df.select_dtypes(np.float64).columns] = test_df.select_dtypes(np.float64).astype(np.float32)
+            test_df[test_df.select_dtypes(np.float64).columns] = test_df.select_dtypes(np.float64).astype(np.float32)
+            # train_df = train_df.astype(np.float32)
+            # test_df = test_df.astype(np.float32)
+            if val_df is not None:
+                val_df[val_df.select_dtypes(np.float64).columns] = val_df.select_dtypes(np.float64).astype(np.float32)
+                # val_df = val_df.astype(np.float32)
+
+        #check if train_df has no NAN
+        assert train_df.isnull().sum().sum()==0, "Train data has NAN"
+        assert test_df.isnull().sum().sum()==0, "Test data has NAN"
+        assert val_df.isnull().sum().sum()==0, "Val data has NAN"
+
         self.target_transformer = experiment.target_transformer
-        
-        
-        
         
         self.target_columns=[f"{self.hparams['targets'][i]}_target" for i in range(len(self.hparams['targets']))]
         #train_df = self.process_df(train_df)
