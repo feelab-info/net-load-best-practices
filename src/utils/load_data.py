@@ -207,10 +207,10 @@ def load_uk_data(data_path='../../Dataset/UK', add_ghi=False, SAMPLES_PER_DAY=48
     return data
 
 
-def load_albania_data(data_path='../../dataset/Year_2016_2017_2018__2019_data_.xlsx', samples_per_day=48):
+def load_albania_data(data_path='../../Dataset/Albania/Year_2016_2017_2018__2019_data_.xlsx', samples_per_day=48):
     data = pd.read_excel(data_path, sheet_name=0)
     data = clean_data(data, SAMPLES_PER_DAY=samples_per_day, columns=['Load'])
-    data.rename(columns={'Time': 'timestamp', 'Time_double': 'TimeDouble', 'Load': 'Load', 'full_temp': 'FullTemp',
+    data.rename(columns={'Time': 'timestamp', 'Time_double': 'TimeDouble', 'Load': 'NetLoad', 'full_temp': 'FullTemp',
                          'full_humid': 'FullHumid', 'full_rain': 'FullRain', 'Muaj': 'Month', 'Ditet': 'DayOfWeek',
                          'Ore': 'Hour', 'Pushimet': 'Holiday', 'Oret e nates': 'NightHour',
                          'Pushimet vjetore': 'AnnualHoliday', 'Oret e nates_2': 'NightHour_2',

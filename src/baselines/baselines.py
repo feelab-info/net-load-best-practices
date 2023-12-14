@@ -1,6 +1,7 @@
 from utils.data import  TimeSeriesDataset, TimeSeriesLazyDataset, DataLoader
 from darts import TimeSeries
 import optuna
+from tqdm import tqdm
 from timeit import default_timer
 from pytorch_lightning.callbacks import Callback, EarlyStopping
 import numpy as np
@@ -9,7 +10,7 @@ import torch
 from pathlib import Path
 import logging
 from utils.data_processing import get_index
-from net.evaluation import evaluate_point_forecast
+from .evaluation import evaluate_point_forecast
 logger = logging.getLogger()
 logger.setLevel(logging.CRITICAL)
 import numpy as np
@@ -86,9 +87,9 @@ class DeterministicBaselineForecast(object):
             train_df=self.transform_darts_data(self.train, self.target_columns)
             model.fit(train_df)
 
-        elif self.hparams['encoder_type'] in ['TimesNet']:
-            train_df=self.transform_darts_data(self.train, self.target_columns)
-            model.fit(df=train_df)
+        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+            train_df=self.transform_neuralforecast_data(self.train, self.hparams)
+            model.fit(df=train_df, val_size=len(self.test))
             
         train_walltime = default_timer() - start_time
 
@@ -122,8 +123,15 @@ class DeterministicBaselineForecast(object):
             pred = model.predict(h=len(self.test))
             pred = pred[self.hparams['encoder_type']].values
             
+        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+            test_df=self.transform_neuralforecast_data(self.test, self.hparams)
+            pred = self.get_prediction_from_nixtlamodel(test_df, model, self.hparams)
+            
         test_walltime = default_timer() - start_time
-        ouputs=self.post_process_pred(pred, train_walltime, test_walltime, file_name)
+        if self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+            ouputs=self.post_process_nixtla_pred(pred, train_walltime, test_walltime, file_name)
+        else:
+            ouputs=self.post_process_pred(pred, train_walltime, test_walltime, file_name)
         if trial is not None:
             return ouputs['NetLoad_metrics']['mae'].mean()
         else:
@@ -146,7 +154,8 @@ class DeterministicBaselineForecast(object):
         #check if train_df has no NAN
         assert train_df.isnull().sum().sum()==0, "Train data has NAN"
         assert test_df.isnull().sum().sum()==0, "Test data has NAN"
-        assert val_df.isnull().sum().sum()==0, "Val data has NAN"
+        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST', 'RF', 'CATBOOST', 'LREGRESS']:
+            assert val_df.isnull().sum().sum()==0, "Val data has NAN"
 
         self.target_transformer = experiment.target_transformer
         
@@ -157,32 +166,51 @@ class DeterministicBaselineForecast(object):
             #val_df  = self.process_df(val_df)
         self.index=get_index(test_df,self. hparams, test=True)
         self.target =  test_df.iloc[self.hparams['window_size']:][self.target_columns].values
-        self.target_range = self.target.max(0)-np.where(self.target.min(0)<0, self.target.min(0), 0)
+        #self.target_range = self.target.max(0)-np.where(self.target.min(0)<0, self.target.min(0), 0)
+        self.target_range = experiment.installed_capacity
         
         covariates=experiment.seasonality_columns + self.hparams['time_varying_known_feature']
     
-        self.train = TimeSeries.from_dataframe(train_df, 
-                                                'timestamp', 
-                                                self.target_columns,
-                                                )
-        self.test = TimeSeries.from_dataframe(test_df, 
+        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+            self.train = TimeSeries.from_dataframe(train_df, 
                                                     'timestamp', 
-                                                    self.target_columns)
-        if val_df is not None:
-            self.val = TimeSeries.from_dataframe(val_df, 
-                                                    'timestamp', 
-                                                    self.target_columns)
-            self.val_cov = TimeSeries.from_dataframe(
-                            val_df, 'timestamp', covariates)
+                                                    self.target_columns,
+                                                    )
+            self.test = TimeSeries.from_dataframe(test_df, 
+                                                        'timestamp', 
+                                                        self.target_columns)
+            if val_df is not None:
+                self.val = TimeSeries.from_dataframe(val_df, 
+                                                        'timestamp', 
+                                                        self.target_columns)
+                self.val_cov = TimeSeries.from_dataframe(
+                                val_df, 'timestamp', covariates)
 
-        self.train_cov = TimeSeries.from_dataframe(
-                            train_df, 'timestamp', covariates)
+            self.train_cov = TimeSeries.from_dataframe(
+                                train_df, 'timestamp', covariates)
 
-        self.test_cov = TimeSeries.from_dataframe(
-                            test_df, 'timestamp', covariates)
-        if val_df is not None:
-            self.covariates = self.train_cov.concatenate(self.val_cov).concatenate(self.test_cov)
+            self.test_cov = TimeSeries.from_dataframe(
+                                test_df, 'timestamp', covariates)
+            if val_df is not None:
+                self.covariates = self.train_cov.concatenate(self.val_cov).concatenate(self.test_cov)
+                
+        else:
+            self.train = train_df
+            self.test = test_df
         
+        
+    def transform_neuralforecast_data(self, data, hparams):
+        columns = ["timestamp"]+hparams["targets"]+hparams["time_varying_known_feature"]+hparams["time_varying_unknown_feature"]+hparams["time_varying_known_categorical_feature"]
+        df = data[columns]
+        df=df.rename(columns={'timestamp':'ds'})
+        #df.index.name='ds'
+        #df=df.reset_index()
+        df=df.rename(columns={hparams['targets'][0]:'y'})
+        df.insert(0, 'unique_id', 'NetLoad')
+        df['ds'] = pd.to_datetime(df['ds']).dt.tz_localize(None)
+        df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
+        return df
+    
     
     def transform_darts_data(self, data, target_columns):
         df = data.pd_dataframe()[target_columns].reset_index()
@@ -192,6 +220,7 @@ class DeterministicBaselineForecast(object):
         df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
         return df
 
+
     def transform_darts_covariates(self, data, cov_columns):
         df = data.pd_dataframe()[cov_columns].reset_index()
         df=df.rename(columns={'timestamp':'ds'}) 
@@ -200,8 +229,8 @@ class DeterministicBaselineForecast(object):
         df = df.sort_values(['unique_id', 'ds']).reset_index(drop=True)
         return df
             
+            
     def post_process_pred(self, pred, train_walltime, test_walltime, file_name):
-        
         Ndays = len(self.target)//self.hparams['horizon']
         loc = pred[self.hparams['window_size']:][:Ndays*self.hparams['horizon']]
         target = self.target[:Ndays*self.hparams['horizon']].reshape(Ndays, self.hparams['horizon'], -1)
@@ -215,13 +244,36 @@ class DeterministicBaselineForecast(object):
         outputs['test-time']=test_walltime
         outputs['target-range']=self.target_range
         #outputs['inputs']= features
-       
 
         for k in ['pred',   'true']:
             outputs[k]=self.inverse_scaling(outputs[k], self.target_transformer)
             
         outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name)
         return outputs
+    
+    
+    def post_process_nixtla_pred(self, pred_df, train_walltime, test_walltime, file_name):
+        print(pred_df.shape)
+        Ndays = len(pred_df)//self.hparams['horizon']
+        loc = pred_df[self.hparams['encoder_type']].values
+        target = pred_df['true'].values
+        index = pred_df['ds'].values
+        loc = loc.reshape(Ndays,  self.hparams['horizon'], -1)
+        target = target.reshape(Ndays,  self.hparams['horizon'], -1)
+        index = index.reshape(Ndays,  self.hparams['horizon'], -1)
+        
+        outputs = {}
+        outputs['pred'] = loc
+        outputs['index']=self.index[:, self.hparams['window_size']:]
+        outputs['true']=target
+        outputs['train-time']=train_walltime
+        outputs['test-time']=test_walltime
+        outputs['target-range']=self.target_range
+        #outputs['inputs']= features
+       
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name)
+        return outputs
+    
     
     def auto_tune_model(self, num_trials=10):
         
@@ -245,5 +297,33 @@ class DeterministicBaselineForecast(object):
        
 
         
+    def get_prediction_from_nixtlamodel(self, test_df, model, hparams):
+    
+        Ndays = len(test_df)//hparams['horizon']
+        all_predictions = []
+        
+        for i in range(1, Ndays):
+
+            first_day_start = i*hparams['horizon']
+            first_day_end = i*hparams['horizon']+ hparams['horizon']
+            
+            second_day_start = first_day_end
+            second_day_end = second_day_start + hparams['horizon']
+
+            historical_data = test_df.iloc[first_day_start:second_day_end]
+            
+            future_data = test_df.iloc[second_day_end:second_day_end+hparams['horizon']]
+
+            if (len(historical_data)!=hparams['window_size']) or  (len(future_data)!=hparams['horizon']):
+                continue
+
+            pred_df = model.predict(historical_data, futr_df=future_data.drop(columns=['y']))
+
+            pred_df = pred_df.reset_index(drop=False)
+            pred_df['true']=future_data.y.values
+            all_predictions.append(pred_df)
+
+        all_predictions = pd.concat(all_predictions)
+        return all_predictions
         
     

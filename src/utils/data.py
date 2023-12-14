@@ -90,7 +90,7 @@ class DatasetObjective(object):
         for datetime in data.index[data.index.hour == hour_init_prediction]:
             if len(data[:datetime]) >= hparams['window_size']:
                 datetime_init_backtest = datetime
-                print(f"Backtesting starts at day: {datetime_init_backtest}")
+                #print(f"Backtesting starts at day: {datetime_init_backtest}")
                 break
 
         days_backtest = np.unique(data[datetime_init_backtest:].index.date)
@@ -216,79 +216,38 @@ class TimeSeriesLazyDataset(Dataset):
             
 
 class TimeseriesDataModule(pl.LightningDataModule):
-    def __init__(self, hparams, experiment, train_df, test_df):
+    def __init__(self, hparams, experiment, train_df, test_df, test=False):
         super().__init__()
        
         target, known_features, unkown_features = experiment.get_data(data=train_df)
-        self.train_dataset = TimeSeriesLazyDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'])
+        if test:
+            self.train_dataset = TimeSeriesDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'],
+                                                    batch_size=hparams['batch_size'], shuffle=True, test=False, drop_last=True)
+        else:
+            self.train_dataset = TimeSeriesLazyDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'])
       
 
         target, known_features, unkown_features = experiment.get_data(data=test_df)
-        self.test_dataset = TimeSeriesLazyDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'])
+        
+        if test:
+            self.test_dataset = TimeSeriesDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'],
+                                                    batch_size=hparams['batch_size'], shuffle=False, test=False, drop_last=False)
+        else:
+            self.test_dataset = TimeSeriesLazyDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'])
         del target
         del known_features
         del unkown_features
         self.batch_size=hparams['batch_size']
+        self.test = test
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True, num_workers=8, pin_memory=True)
+        if self.test:
+            return self.train_dataset.get_loader()
+        else:
+            return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True, num_workers=8, pin_memory=True)
 
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, drop_last=True, num_workers=8, pin_memory=True)
-
-
-
-
-
-
-
-
-
-def dissagregationLazyData(hparams, seasonality_columns, data):
-        
-    
-    unkown_features = data[hparams['time_varying_unknown_feature']].values.astype(np.float64) 
-    target = data[[f+"_target" for f in hparams['targets']]].values.astype(np.float64)
-
-        
-    if not hparams['seasonality']:
-        if len(hparams['time_varying_known_feature'])>0:
-            known_features = data[hparams['time_varying_known_feature'] + hparams['time_varying_known_categorical_feature']].values.astype(np.float64)
+        if self.test:
+            return self.test_dataset.get_loader()
         else:
-            known_features =hparams['time_varying_known_categorical_feature'].values.astype(np.float64)
-          
-        
-    else:
-        seasonalities=data[seasonality_columns].values
-        if len(hparams['time_varying_known_feature'])>=1:
-            known_features = np.concatenate([data[hparams['time_varying_known_feature']].values, seasonalities], 1).astype(np.float64)
-        else:
-            known_features = seasonalities.astype(np.float64)
-            
-    unkown_features = np.concatenate([unkown_features, known_features], 1).astype(np.float64)
-            
-    return TimeSeriesLazyDataset(unkown_features, known_features, target, window_size=hparams['window_size'], horizon=hparams['horizon'])
-        
-
-    
-class DisaggregationDataModule(pl.LightningDataModule):
-    def __init__(self, hparams, experiment, train_df, test_df):
-        super().__init__()
-       
-       
-        self.train_dataset = dissagregationLazyData(hparams, experiment.seasonality_columns, train_df)
-        
-      
-
-        target, known_features, unkown_features = experiment.get_data(data=test_df)
-        self.test_dataset = dissagregationLazyData(hparams, experiment.seasonality_columns, test_df)
-        del target
-        del known_features
-        del unkown_features
-        self.batch_size=hparams['batch_size']
-
-    def train_dataloader(self):
-        return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True, num_workers=8, pin_memory=True)
-
-    def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, drop_last=True, num_workers=8, pin_memory=True)
+            return torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, drop_last=True, num_workers=8, pin_memory=True)

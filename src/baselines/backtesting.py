@@ -1,12 +1,13 @@
 
 from .baselines import DeterministicBaselineForecast
+from MLPF.model import MLPForecast
 from darts import TimeSeries
 import os
 from copy import deepcopy
 import numpy as np
 import pandas as pd
 # from net.utils import   get_latest_checkpoint
-from net.evaluation import evaluate_point_forecast
+from .evaluation import evaluate_point_forecast
 from orbit.constants.constants import TimeSeriesSplitSchemeKeys
 from orbit.diagnostics.backtest import  TimeSeriesSplitter
 import matplotlib_inline.backend_inline
@@ -69,9 +70,7 @@ class BacktestingForecast(object):
 
         train_df=train_df.reset_index()
         train_df['timestamp'] = pd.to_datetime(train_df['timestamp']).dt.tz_localize(None)
-        columns = list(train_df.columns)[1:]
-        df = TimeSeries.from_dataframe(train_df, 'timestamp', columns, fill_missing_dates=True)
-        train_df=df.pd_dataframe().reset_index()
+        
 
         test_experiment= DatasetObjective(hparams=hparams, 
 
@@ -94,19 +93,27 @@ class BacktestingForecast(object):
 
         file_name=f'{self.file_name}_{key}'
 
-
-        model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
-        if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+        if hparams['encoder_type']=='MLPForecast':
+            model=MLPForecast(exp_name=self.exp_name, file_name=self.file_name, hparams=hparams)
             size = int(len(train_df)*train_ratio)
             train_df, val_df = train_df.iloc[:size], train_df[size:]
-            model.prepare_data(experiment, train_df, test_df, val_df)
             train_size= (train_ratio*len(train_df))/self.len
+            model.fit(train_df, val_df,  experiment)
+            outputs=model.predict(test_df, experiment)
         else:
-            model.prepare_data(experiment, train_df, test_df, None)
-            train_size= len(train_df)/self.len
-        
-        outputs=model.fit(None, hparams, file_name=self.file_name)
-                
+            model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
+            
+            if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+                size = int(len(train_df)*train_ratio)
+                train_df, val_df = train_df.iloc[:size], train_df[size:]
+                model.prepare_data(experiment, train_df, test_df, val_df)
+                train_size= (train_ratio*len(train_df))/self.len
+            else:
+                model.prepare_data(experiment, train_df, test_df, None)
+                train_size= len(train_df)/self.len
+            
+            outputs=model.fit(None, hparams, file_name=self.file_name)
+                    
        
         outputs['train-size']=train_size
         np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
@@ -141,7 +148,7 @@ class BacktestingForecast(object):
             input_scaler, target_scaler=fit_scaling_on_train_df(hparams, train_df)
 
             experiment= DatasetObjective(hparams=hparams, 
-                                            data=train_df.set_index('timestamp', drop=True), add_ghi=False, 
+                                            data=train_df.set_index('timestamp', drop=False), add_ghi=False, 
                                             scaler=input_scaler, 
                                             target_scaler=target_scaler, 
                                             fit_scaler=False,
@@ -178,23 +185,38 @@ class BacktestingForecast(object):
             file_name=f'{self.file_name}_{key+1}_cross_validation'
 
 
-            model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
-            if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+            if hparams['encoder_type']=='MLPForecast':
+                model=MLPForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams)
                 size = int(len(train_df)*train_ratio)
                 train_df, val_df = train_df.iloc[:size], train_df[size:]
-                model.prepare_data(experiment, train_df, test_df, val_df)
                 train_size= (train_ratio*len(train_df))/self.len
+                if autotune:
+                    model.auto_tune_model(train_df=train_df, val_df=val_df, experiment=experiment, num_trials=hparams['num_trials'])
+                    break
+                else:
+                    model.fit(train_df, val_df,  experiment)
+                    outputs=model.predict(test_df, experiment)
+                    outputs=model.fit(None, hparams, file_name=self.file_name)
+                
             else:
-                model.prepare_data(experiment, train_df, test_df, None)
-                train_size= len(train_df)/self.len
+
+                model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
+                if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+                    size = int(len(train_df)*train_ratio)
+                    train_df, val_df = train_df.iloc[:size], train_df[size:]
+                    model.prepare_data(experiment, train_df, test_df, val_df)
+                    train_size= (train_ratio*len(train_df))/self.len
+                else:
+                    model.prepare_data(experiment, train_df, test_df, None)
+                    train_size= len(train_df)/self.len
                 
                 
             
-            if autotune and hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
-                model.auto_tune_model(num_trials=hparams['num_trials'])
-                break
-            else:
-                outputs=model.fit(None, hparams, file_name=self.file_name)
+                if autotune and hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+                    model.auto_tune_model(num_trials=hparams['num_trials'])
+                    break
+                else:
+                    outputs=model.fit(None, hparams, file_name=self.file_name)
                 
             
                 outputs['train-size']=train_size

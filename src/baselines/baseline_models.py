@@ -7,13 +7,13 @@ from timeit import default_timer
 from pytorch_lightning.callbacks import Callback, EarlyStopping
 import numpy as np
 import torch
-from net.evaluation import evaluate_point_forecast
+from .evaluation import evaluate_point_forecast
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from statsforecast import StatsForecast
-from neuralforecast.models import TimesNet
+from neuralforecast.models import TimesNet, PatchTST, NHITS
 from neuralforecast import NeuralForecast
 from neuralforecast.losses.pytorch import MSE
-from neuralforecast.auto import AutoTimesNet
+from neuralforecast.auto import AutoTimesNet, AutoPatchTST
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable training prints from optuna
 
@@ -49,7 +49,7 @@ class BaselineDNNModel(object):
         if hparams['encoder_type'] in ['CATBOOST', 'RF', 'LREGRESS']:
             model = self.get_conventional_baseline_model(hparams)
 
-        if hparams['encoder_type'] in ['TimesNet', 'AutoTimesNet']:
+        if hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
             model = self.get_neuralforecast_baseline(hparams)
         return model
             
@@ -100,10 +100,11 @@ class BaselineDNNModel(object):
                                 output_chunk_length=hparams['horizon'])
         return model
     
-    
+
     def get_neuralforecast_baseline(self, hparams):
-        futr_exog_list = ['dayofweek', 'hour', 'day', 'month']
-        hist_exog_list = ['dayofweek', 'hour', 'day', 'month']
+        future_exog=hparams["time_varying_unknown_feature"]+hparams["time_varying_known_categorical_feature"]
+        models = []
+        period=int(24*60/hparams['horizon'])
 
         if hparams['encoder_type']=='TimesNet':
             timesnet = TimesNet(
@@ -111,37 +112,61 @@ class BaselineDNNModel(object):
                         input_size=hparams['window_size'],
                         hidden_size = hparams['hidden_size'],
                         conv_hidden_size = hparams['conv_hidden_size'],
-                        learning_rate=hparams['lr'],
-                        batch_size=hparams['batch_size'],
-                        dropout=hparams['dropout'],
-                        loss=MSE(),
-                        futr_exog_list=futr_exog_list,
-                        hist_exog_list=hist_exog_list,
+                        learning_rate=hparams['learning_rate'],
+                        #loss=MSE(),
+                        futr_exog_list=future_exog,
+                        # hist_exog_list=hist_exog_list,
                         max_steps=hparams['max_epochs'],
-                        # val_check_steps=50
-                        # scaler_type='standard',
+                        val_check_steps=10,
+                        scaler_type='standard',
                         early_stop_patience_steps=3
                     )
-            model = NeuralForecast(
-                        models=[timesnet],
-                        freq='M'
-                    )
+            models.append(timesnet)
+            
+        if hparams['encoder_type']=='PatchTST':
+            patchTST = PatchTST(h=hparams['horizon'],
+                        input_size=hparams['window_size'],
+                        patch_len=32,
+                        stride=16,
+                        revin=False,
+                        hidden_size=hparams['hidden_size'],
+                        #futr_exog_list = ['Ghi'], # <- Future exogenous variables
+                        #hist_exog_list = ['Ghi', 'NetLoad-Ghi'], # <- Historical exogenous variables
+                        n_heads=4,
+                        scaler_type='standard',
+                        #loss=MAE(),
+                        learning_rate=hparams['learning_rate'],
+                        max_steps=100,
+                        val_check_steps=10,
+                        early_stop_patience_steps=3)
+            models.append(patchTST)
             
         if hparams['encoder_type']=='AutoTimesNet':
             auto_timesnet = AutoTimesNet(
                         h=hparams['horizon'],
-                        loss=MSE(),
-                        config=self.get_timesnet_search_params,
+                        config=self.get_auto_timesnet_search_params,
                         search_alg=optuna.samplers.TPESampler(),
                         backend='optuna',
                         num_samples=10
                     )
-            model = NeuralForecast(
-                        models=[auto_timesnet],
-                        freq='M'
+            models.append(auto_timesnet)
+            
+        if hparams['encoder_type']=='AutoPatchTST':
+            auto_timesnet = AutoPatchTST(
+                        h=hparams['horizon'],
+                        config=self.get_auto_patchtst_search_params,
+                        search_alg=optuna.samplers.TPESampler(),
+                        backend='optuna',
+                        num_samples=10
                     )
+            models.append(auto_timesnet)
+       
+        nf = NeuralForecast(
+                    models=models,
+                    freq=f"{period}T"
+                )
 
-        return model
+        return nf
 
     
     def get_statistical_baselines(self, hparams):
@@ -524,8 +549,25 @@ class BaselineDNNModel(object):
         return params
     
     
-    def get_timesnet_search_params(self, trial):
+    def get_auto_timesnet_search_params(self, trial):
         return {
+            'max_steps': 100,
+            'input_size': 96,
+            'futr_exog_list':['Ghi', 'DAYOFWEEK', 'DAY', 'HOUR', 'Session'],
+            'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5),
+        }
+        
+        
+    def get_auto_patchtst_search_params(self, trial):
+        return {
+            'max_steps': 100,
+            'input_size': 96,
+            'patch_len':trial.suggest_int("patch_len", 24, 32),
+            'stride':trial.suggest_int("stride", 16, 24),
+            'n_heads':4,
+            'revin':False,
+            'hidden_size':16,
             'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
             'dropout': trial.suggest_float("dropout", 0.0, 0.5),
         }
