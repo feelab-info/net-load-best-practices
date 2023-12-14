@@ -87,9 +87,14 @@ class DeterministicBaselineForecast(object):
             train_df=self.transform_darts_data(self.train, self.target_columns)
             model.fit(train_df)
 
-        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
             train_df=self.transform_neuralforecast_data(self.train, self.hparams)
             model.fit(df=train_df, val_size=len(self.test))
+            if self.hparams['autotune']:
+                study = model.models[0].results
+                print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
+                self.hparams.update(study.best_trial.params)
+                np.save(f"../results/{self.exp_name}/{self.hparams['encoder_type']}/best_params.npy", self.hparams)        
             
         train_walltime = default_timer() - start_time
 
@@ -123,12 +128,12 @@ class DeterministicBaselineForecast(object):
             pred = model.predict(h=len(self.test))
             pred = pred[self.hparams['encoder_type']].values
             
-        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
             test_df=self.transform_neuralforecast_data(self.test, self.hparams)
             pred = self.get_prediction_from_nixtlamodel(test_df, model, self.hparams)
             
         test_walltime = default_timer() - start_time
-        if self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+        if self.hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
             ouputs=self.post_process_nixtla_pred(pred, train_walltime, test_walltime, file_name)
         else:
             ouputs=self.post_process_pred(pred, train_walltime, test_walltime, file_name)
@@ -154,7 +159,7 @@ class DeterministicBaselineForecast(object):
         #check if train_df has no NAN
         assert train_df.isnull().sum().sum()==0, "Train data has NAN"
         assert test_df.isnull().sum().sum()==0, "Test data has NAN"
-        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST', 'RF', 'CATBOOST', 'LREGRESS']:
+        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'RF', 'CATBOOST', 'LREGRESS']:
             assert val_df.isnull().sum().sum()==0, "Val data has NAN"
 
         self.target_transformer = experiment.target_transformer
@@ -171,7 +176,7 @@ class DeterministicBaselineForecast(object):
         
         covariates=experiment.seasonality_columns + self.hparams['time_varying_known_feature']
     
-        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST']:
             self.train = TimeSeries.from_dataframe(train_df, 
                                                     'timestamp', 
                                                     self.target_columns,

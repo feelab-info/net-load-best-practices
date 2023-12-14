@@ -49,7 +49,7 @@ class BaselineDNNModel(object):
         if hparams['encoder_type'] in ['CATBOOST', 'RF', 'LREGRESS']:
             model = self.get_conventional_baseline_model(hparams)
 
-        if hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'AutoTimesNet', 'AutoPatchTST']:
+        if hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
             model = self.get_neuralforecast_baseline(hparams)
         return model
             
@@ -107,59 +107,59 @@ class BaselineDNNModel(object):
         period=int(24*60/hparams['horizon'])
 
         if hparams['encoder_type']=='TimesNet':
-            timesnet = TimesNet(
-                        h=hparams['horizon'],
-                        input_size=hparams['window_size'],
-                        hidden_size = hparams['hidden_size'],
-                        conv_hidden_size = hparams['conv_hidden_size'],
-                        learning_rate=hparams['learning_rate'],
-                        #loss=MSE(),
-                        futr_exog_list=future_exog,
-                        # hist_exog_list=hist_exog_list,
-                        max_steps=hparams['max_epochs'],
-                        val_check_steps=10,
-                        scaler_type='standard',
-                        early_stop_patience_steps=3
-                    )
-            models.append(timesnet)
-            
-        if hparams['encoder_type']=='PatchTST':
-            patchTST = PatchTST(h=hparams['horizon'],
-                        input_size=hparams['window_size'],
-                        patch_len=32,
-                        stride=16,
-                        revin=False,
-                        hidden_size=hparams['hidden_size'],
-                        #futr_exog_list = ['Ghi'], # <- Future exogenous variables
-                        #hist_exog_list = ['Ghi', 'NetLoad-Ghi'], # <- Historical exogenous variables
-                        n_heads=4,
-                        scaler_type='standard',
-                        #loss=MAE(),
-                        learning_rate=hparams['learning_rate'],
-                        max_steps=100,
-                        val_check_steps=10,
-                        early_stop_patience_steps=3)
-            models.append(patchTST)
-            
-        if hparams['encoder_type']=='AutoTimesNet':
-            auto_timesnet = AutoTimesNet(
+            if(hparams['autotune']):
+                auto_timesnet = AutoTimesNet(
                         h=hparams['horizon'],
                         config=self.get_auto_timesnet_search_params,
                         search_alg=optuna.samplers.TPESampler(),
                         backend='optuna',
                         num_samples=10
                     )
-            models.append(auto_timesnet)
+                models.append(auto_timesnet)
+            else:
+                timesnet = TimesNet(
+                            h=hparams['horizon'],
+                            input_size=hparams['window_size'],
+                            hidden_size = hparams['hidden_size'],
+                            conv_hidden_size = hparams['conv_hidden_size'],
+                            learning_rate=hparams['learning_rate'],
+                            #loss=MSE(),
+                            futr_exog_list=future_exog,
+                            # hist_exog_list=hist_exog_list,
+                            max_steps=hparams['max_epochs'],
+                            val_check_steps=10,
+                            scaler_type='standard',
+                            early_stop_patience_steps=3
+                        )
+                models.append(timesnet)
             
-        if hparams['encoder_type']=='AutoPatchTST':
-            auto_timesnet = AutoPatchTST(
+        if hparams['encoder_type']=='PatchTST':
+            if(hparams['autotune']):
+                auto_patchtst = AutoPatchTST(
                         h=hparams['horizon'],
                         config=self.get_auto_patchtst_search_params,
                         search_alg=optuna.samplers.TPESampler(),
                         backend='optuna',
                         num_samples=10
                     )
-            models.append(auto_timesnet)
+                models.append(auto_patchtst)
+            else:
+                patchtst = PatchTST(h=hparams['horizon'],
+                            input_size=hparams['window_size'],
+                            patch_len=32,
+                            stride=16,
+                            revin=False,
+                            hidden_size=hparams['hidden_size'],
+                            #futr_exog_list = ['Ghi'], # <- Future exogenous variables
+                            #hist_exog_list = ['Ghi', 'NetLoad-Ghi'], # <- Historical exogenous variables
+                            n_heads=4,
+                            scaler_type='standard',
+                            #loss=MAE(),
+                            learning_rate=hparams['learning_rate'],
+                            max_steps=100,
+                            val_check_steps=10,
+                            early_stop_patience_steps=3)
+                models.append(patchtst)
        
         nf = NeuralForecast(
                     models=models,
