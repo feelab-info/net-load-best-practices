@@ -199,6 +199,8 @@ class BacktestingForecast(object):
                     
                 
             else:
+                
+                hparams.update({'autotune': autotune})
 
                 model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
                 if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
@@ -217,6 +219,8 @@ class BacktestingForecast(object):
                     break
                 else:
                     outputs=model.fit(None, hparams, file_name=self.file_name)
+                    if autotune and hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
+                        break
                 
             
                 outputs['train-size']=train_size

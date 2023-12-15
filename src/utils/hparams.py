@@ -108,5 +108,6 @@ hparams =   {
                 'horizon': 48,
                 'hidden_size': 16,
                 'conv_hidden_size': 32,
+                'autotune': True,
             }
 
