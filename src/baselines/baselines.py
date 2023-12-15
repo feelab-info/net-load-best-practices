@@ -248,7 +248,7 @@ class DeterministicBaselineForecast(object):
         for k in ['pred',   'true']:
             outputs[k]=self.inverse_scaling(outputs[k], self.target_transformer)
             
-        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name)
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, show_fig=False)
         return outputs
     
     
@@ -271,7 +271,7 @@ class DeterministicBaselineForecast(object):
         outputs['target-range']=self.target_range
         #outputs['inputs']= features
        
-        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name)
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name,  show_fig=False)
         return outputs
     
     

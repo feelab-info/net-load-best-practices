@@ -182,7 +182,7 @@ class BacktestingForecast(object):
             
 
 
-            file_name=f'{self.file_name}_{key+1}_cross_validation'
+            file_name=f'{key+1}_cross_validation'
 
 
             if hparams['encoder_type']=='MLPForecast':
@@ -196,7 +196,7 @@ class BacktestingForecast(object):
                 else:
                     model.fit(train_df, val_df,  experiment)
                     outputs=model.predict(test_df, experiment)
-                    outputs=model.fit(None, hparams, file_name=self.file_name)
+                    
                 
             else:
 
@@ -220,11 +220,11 @@ class BacktestingForecast(object):
                 
             
                 outputs['train-size']=train_size
-                np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
-                metrics=outputs['NetLoad_metrics']
-                metrics['train-size']=train_size
-                metrics[f'folds']=key+1
-                bactestingting_metrics.append(metrics)
+                np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/processed_results.npy", outputs)
+            metrics=outputs['NetLoad_metrics']
+            metrics['train-size']=train_size
+            metrics[f'folds']=key+1
+            bactestingting_metrics.append(metrics)
         if not autotune:
             bactestingting_metrics=pd.concat(bactestingting_metrics)
             return bactestingting_metrics

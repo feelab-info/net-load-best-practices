@@ -243,7 +243,7 @@ class MLPForecast(object):
     
         
 
-    def predict(self, test_df,  experiment=None,  test=True, file_name=None):
+    def predict(self, test_df,  experiment=None,  test=True):
     
         target, known_features, unkown_features = experiment.get_data(data=test_df)
         index=get_index(test_df, self.hparams, test=test)
@@ -269,8 +269,8 @@ class MLPForecast(object):
         outputs['pred']=inverse_scaling(outputs['pred'], experiment.target_transformer)
         outputs['true']=inverse_scaling(outputs['true'], experiment.target_transformer)
         outputs['target-range']=experiment.installed_capacity
-        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name)
-        
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name,  show_fig=False)
+        np.save(f"{self.results_path}/{self.file_name}_processed_results.npy", outputs)
         return outputs
     
     

@@ -65,9 +65,8 @@ class MLPBlock(nn.Module):
         
     def forward(self, x):
         x = x.flatten(1,2)
-        for m in self.mlp_network:
+        for  m in self.mlp_network:
             x = m(x)
-       
         return x
 
 

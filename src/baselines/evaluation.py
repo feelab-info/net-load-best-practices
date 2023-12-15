@@ -13,7 +13,7 @@ import matplotlib.dates as mdates
 matplotlib_inline.backend_inline.set_matplotlib_formats("svg", "pdf")
 az.style.use(["science", "grid", "arviz-doc", 'tableau-colorblind10'])
 
-def evaluate_point_forecast(outputs, target_range, hparams, exp_name, file_name, ghi_dx=1, show_fig=False):
+def evaluate_point_forecast(outputs, target_range, hparams, exp_name, ghi_dx=1, show_fig=False):
     
     pd_metrics, spilit_metrics = {}, {}
     logs = {}
@@ -70,7 +70,7 @@ def evaluate_point_forecast(outputs, target_range, hparams, exp_name, file_name,
         
         
         fig.tight_layout(pad=1.08, h_pad=0.5, w_pad=0.5)
-        fig.savefig(f"../figures/{exp_name}/{hparams['encoder_type']}/{file_name}_{hparams['targets'][j]}_results.pdf", dpi=480)
+        fig.savefig(f"../figures/{exp_name}/{hparams['encoder_type']}/{hparams['targets'][j]}_results.pdf", dpi=480)
         if not show_fig:
             plt.close()
 
