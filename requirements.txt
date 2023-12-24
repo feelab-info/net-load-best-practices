@@ -33,3 +33,4 @@ u8darts==0.23.1
 jupyterlab==4.0.7
 openpyxl==3.1.2
 sciencePlots==2.1.0
+neuralforecast==1.6.4

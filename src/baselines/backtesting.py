@@ -90,11 +90,11 @@ class BacktestingForecast(object):
 
             
 
-
-        file_name=f'{self.file_name}_{key}'
+        file_name=f'{key}'
+        #file_name=f'{self.file_name}_{key}'
 
         if hparams['encoder_type']=='MLPForecast':
-            model=MLPForecast(exp_name=self.exp_name, file_name=self.file_name, hparams=hparams)
+            model=MLPForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams)
             size = int(len(train_df)*train_ratio)
             train_df, val_df = train_df.iloc[:size], train_df[size:]
             train_size= (train_ratio*len(train_df))/self.len
@@ -224,7 +224,7 @@ class BacktestingForecast(object):
                 
             
                 outputs['train-size']=train_size
-                np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/processed_results.npy", outputs)
+                np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
             metrics=outputs['NetLoad_metrics']
             metrics['train-size']=train_size
             metrics[f'folds']=key+1

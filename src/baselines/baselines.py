@@ -92,8 +92,8 @@ class DeterministicBaselineForecast(object):
             model.fit(df=train_df, val_size=len(self.test))
             if self.hparams['autotune']:
                 study = model.models[0].results
-                print(f"Best value: {study.best_value}, Best params: {study.best_trial.params}")
-                self.hparams.update(study.best_trial.params)
+                print(f"Best value: {study.best_value}, Best params: {study.best_params}")
+                self.hparams.update(study.best_params)
                 np.save(f"../results/{self.exp_name}/{self.hparams['encoder_type']}/best_params.npy", self.hparams)        
             
         train_walltime = default_timer() - start_time
@@ -159,7 +159,7 @@ class DeterministicBaselineForecast(object):
         #check if train_df has no NAN
         assert train_df.isnull().sum().sum()==0, "Train data has NAN"
         assert test_df.isnull().sum().sum()==0, "Test data has NAN"
-        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'RF', 'CATBOOST', 'LREGRESS']:
+        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'RF', 'CATBOOST', 'LREGRESS', 'MSTL', 'SeasonalNaive']:
             assert val_df.isnull().sum().sum()==0, "Val data has NAN"
 
         self.target_transformer = experiment.target_transformer
@@ -260,7 +260,10 @@ class DeterministicBaselineForecast(object):
     def post_process_nixtla_pred(self, pred_df, train_walltime, test_walltime, file_name):
         print(pred_df.shape)
         Ndays = len(pred_df)//self.hparams['horizon']
-        loc = pred_df[self.hparams['encoder_type']].values
+        if self.hparams['autotune']:
+            loc = pred_df['Auto'+self.hparams['encoder_type']].values
+        else:
+            loc = pred_df[self.hparams['encoder_type']].values
         target = pred_df['true'].values
         index = pred_df['ds'].values
         loc = loc.reshape(Ndays,  self.hparams['horizon'], -1)

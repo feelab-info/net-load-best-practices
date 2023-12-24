@@ -102,63 +102,66 @@ class BaselineDNNModel(object):
     
 
     def get_neuralforecast_baseline(self, hparams):
-        future_exog=hparams["time_varying_unknown_feature"]+hparams["time_varying_known_categorical_feature"]
+        self.future_exog=hparams["time_varying_unknown_feature"]+hparams["time_varying_known_categorical_feature"]
+        self.hparams=hparams
         models = []
         period=int(24*60/hparams['horizon'])
+        
+        print(f'Autotune get_neuralforecast_baseline is {hparams["autotune"]}')
 
         if hparams['encoder_type']=='TimesNet':
             if(hparams['autotune']):
+                print('Running AutoTimesNet..')
                 auto_timesnet = AutoTimesNet(
                         h=hparams['horizon'],
                         config=self.get_auto_timesnet_search_params,
                         search_alg=optuna.samplers.TPESampler(),
                         backend='optuna',
-                        num_samples=10
+                        num_samples=hparams['num_trials']
                     )
                 models.append(auto_timesnet)
             else:
+                print('Running TimesNet..')
                 timesnet = TimesNet(
                             h=hparams['horizon'],
                             input_size=hparams['window_size'],
                             hidden_size = hparams['hidden_size'],
                             conv_hidden_size = hparams['conv_hidden_size'],
                             learning_rate=hparams['learning_rate'],
-                            #loss=MSE(),
-                            futr_exog_list=future_exog,
-                            # hist_exog_list=hist_exog_list,
+                            random_seed=hparams['random_seed'],
+                            futr_exog_list= self.future_exog,
                             max_steps=hparams['max_epochs'],
-                            val_check_steps=10,
-                            scaler_type='standard',
-                            early_stop_patience_steps=3
+                            val_check_steps=50,
+                            early_stop_patience_steps=5
                         )
                 models.append(timesnet)
             
         if hparams['encoder_type']=='PatchTST':
             if(hparams['autotune']):
+                print('Running AutoPatchTST..')
                 auto_patchtst = AutoPatchTST(
                         h=hparams['horizon'],
                         config=self.get_auto_patchtst_search_params,
                         search_alg=optuna.samplers.TPESampler(),
                         backend='optuna',
-                        num_samples=10
+                        num_samples=hparams['num_trials']
                     )
                 models.append(auto_patchtst)
             else:
+                print('Running PatchTST..')
                 patchtst = PatchTST(h=hparams['horizon'],
                             input_size=hparams['window_size'],
-                            patch_len=32,
-                            stride=16,
+                            patch_len=hparams['patch_len'],
+                            stride=hparams['stride'],
                             revin=False,
                             hidden_size=hparams['hidden_size'],
-                            #futr_exog_list = ['Ghi'], # <- Future exogenous variables
-                            #hist_exog_list = ['Ghi', 'NetLoad-Ghi'], # <- Historical exogenous variables
-                            n_heads=4,
-                            scaler_type='standard',
-                            #loss=MAE(),
+                            n_heads=hparams['n_heads'],
+                            activation=hparams['activation'],
+                            random_seed=hparams['random_seed'],
                             learning_rate=hparams['learning_rate'],
-                            max_steps=100,
-                            val_check_steps=10,
-                            early_stop_patience_steps=3)
+                            max_steps=hparams['max_epochs'],
+                            val_check_steps=50,
+                            early_stop_patience_steps=5)
                 models.append(patchtst)
        
         nf = NeuralForecast(
@@ -184,10 +187,13 @@ class BaselineDNNModel(object):
             model = StatsForecast(models=[SeasonalNaive(season_length= hparams['SAMPLES_PER_DAY'])], # model used to fit each time series 
                         freq=f'{period}T')
             
-        elif hparams['encoder_type']=='AutoARIMA':
+        elif hparams['encoder_type']=='ARIMA':
             model = StatsForecast(models=[AutoARIMA(season_length= hparams['SAMPLES_PER_DAY'])], # model used to fit each time series 
                         freq=f'{period}T')
         
+        elif hparams['encoder_type']=='AutoARIMA':
+            model = StatsForecast(models=[AutoARIMA(season_length= hparams['SAMPLES_PER_DAY'])], # model used to fit each time series 
+                        freq=f'{period}T')
         return model
             
     def set_callback(self, callbacks):
@@ -551,25 +557,51 @@ class BaselineDNNModel(object):
     
     def get_auto_timesnet_search_params(self, trial):
         return {
-            'max_steps': 100,
-            'input_size': 96,
-            'futr_exog_list':['Ghi', 'DAYOFWEEK', 'DAY', 'HOUR', 'Session'],
+            'max_steps': self.hparams["max_epochs"],
+            'input_size': self.hparams["window_size"],
+            'futr_exog_list':self.future_exog,
+            'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
+            'conv_hidden_size':trial.suggest_categorical("conv_hidden_size", [16, 32, 64, 128, 256, 512] ),
+            'learning_rate':trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
+            'val_check_steps':25,
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5, step=0.1),
+            'random_seed':trial.suggest_int('random_seed', 1, 20),
+        }
+        
+        
+    def get_auto_nhits_search_params(self, trial):
+        future_exog=self.hparams["time_varying_unknown_feature"]+self.hparams["time_varying_known_categorical_feature"]
+        return {
+            'max_steps': self.hparams["max-epochs"],
+            'input_size': self.hparams["window_size"],
+            'futr_exog_list':future_exog,
+             'hist_exog_list':future_exog,
+            'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5),
+        }
+    
+    def get_auto_nbeats_search_params(self, trial):
+        future_exog=self.hparams["time_varying_unknown_feature"]+self.hparams["time_varying_known_categorical_feature"]
+        return {
+            'max_steps': self.hparams["max-epochs"],
+            'input_size': self.hparams["window_size"],
             'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
             'dropout': trial.suggest_float("dropout", 0.0, 0.5),
         }
         
-        
     def get_auto_patchtst_search_params(self, trial):
         return {
-            'max_steps': 100,
-            'input_size': 96,
-            'patch_len':trial.suggest_int("patch_len", 24, 32),
-            'stride':trial.suggest_int("stride", 16, 24),
-            'n_heads':4,
+            'max_steps':self.hparams["max_epochs"],
+            'input_size':self.hparams["window_size"],
+            'patch_len':trial.suggest_categorical("patch_len", [16, 24, 32]),
+            'n_heads':trial.suggest_categorical("n_heads", [4, 8, 16]),
             'revin':False,
-            'hidden_size':16,
+            'val_check_steps':25,
+            "activation":trial.suggest_categorical("activation", ['ReLU','GeLU']),
+            'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
             'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
-            'dropout': trial.suggest_float("dropout", 0.0, 0.5),
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5, step=0.1),
+            'random_seed':trial.suggest_int('random_seed', 1, 20),
         }
     
     

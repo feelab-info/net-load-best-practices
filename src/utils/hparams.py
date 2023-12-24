@@ -109,5 +109,7 @@ hparams =   {
                 'hidden_size': 16,
                 'conv_hidden_size': 32,
                 'autotune': True,
+                'stride': 16,
+                'random_seed': 1,
             }
 
