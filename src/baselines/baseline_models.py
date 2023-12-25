@@ -10,10 +10,10 @@ import torch
 from .evaluation import evaluate_point_forecast
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from statsforecast import StatsForecast
-from neuralforecast.models import TimesNet, PatchTST, NHITS
+from neuralforecast.models import TimesNet, PatchTST, FEDformer, NHITS
 from neuralforecast import NeuralForecast
 from neuralforecast.losses.pytorch import MSE
-from neuralforecast.auto import AutoTimesNet, AutoPatchTST
+from neuralforecast.auto import AutoTimesNet, AutoPatchTST, AutoFEDformer
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable training prints from optuna
 
@@ -129,6 +129,7 @@ class BaselineDNNModel(object):
                             conv_hidden_size = hparams['conv_hidden_size'],
                             learning_rate=hparams['learning_rate'],
                             random_seed=hparams['random_seed'],
+                            dropout=hparams['dropout'],
                             futr_exog_list= self.future_exog,
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
@@ -156,6 +157,7 @@ class BaselineDNNModel(object):
                             revin=False,
                             hidden_size=hparams['hidden_size'],
                             n_heads=hparams['n_heads'],
+                            dropout=hparams['dropout'],
                             activation=hparams['activation'],
                             random_seed=hparams['random_seed'],
                             learning_rate=hparams['learning_rate'],
@@ -163,6 +165,34 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5)
                 models.append(patchtst)
+
+        if hparams['encoder_type']=='FEDformer':
+            if(hparams['autotune']):
+                print('Running AutoFEDformer..')
+                auto_fedformer = AutoFEDformer(
+                        h=hparams['horizon'],
+                        config=self.get_auto_fedformer_search_params,
+                        search_alg=optuna.samplers.TPESampler(),
+                        backend='optuna',
+                        num_samples=hparams['num_trials']
+                    )
+                models.append(auto_fedformer)
+            else:
+                print('Running FEDformer..')
+                fedformer = FEDformer(h=hparams['horizon'],
+                            input_size=hparams['window_size'],
+                            futr_exog_list= self.future_exog,
+                            hidden_size=hparams['hidden_size'],
+                            conv_hidden_size = hparams['conv_hidden_size'],
+                            n_heads=hparams['n_heads'],
+                            dropout=hparams['dropout'],
+                            activation=hparams['activation'],
+                            random_seed=hparams['random_seed'],
+                            learning_rate=hparams['learning_rate'],
+                            max_steps=hparams['max_epochs'],
+                            val_check_steps=50,
+                            early_stop_patience_steps=5)
+                models.append(fedformer)
        
         nf = NeuralForecast(
                     models=models,
@@ -556,6 +586,20 @@ class BaselineDNNModel(object):
     
     
     def get_auto_timesnet_search_params(self, trial):
+        return {
+            'max_steps': self.hparams["max_epochs"],
+            'input_size': self.hparams["window_size"],
+            'futr_exog_list':self.future_exog,
+            'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
+            'conv_hidden_size':trial.suggest_categorical("conv_hidden_size", [16, 32, 64, 128, 256, 512] ),
+            'learning_rate':trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
+            'val_check_steps':25,
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5, step=0.1),
+            'random_seed':trial.suggest_int('random_seed', 1, 20),
+        }
+    
+
+    def get_auto_fedformer_search_params(self, trial):
         return {
             'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],

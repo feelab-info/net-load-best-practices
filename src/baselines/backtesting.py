@@ -219,7 +219,7 @@ class BacktestingForecast(object):
                     break
                 else:
                     outputs=model.fit(None, hparams, file_name=self.file_name)
-                    if autotune and hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
+                    if autotune and hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
                         break
                 
             
