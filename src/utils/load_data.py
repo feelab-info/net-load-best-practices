@@ -7,6 +7,36 @@ from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from utils.data_processing import compute_netload_ghi
 import scipy.signal as signal
 
+def load_hybrid_res_data(data_path='../../Dataset/IEEECompetition/pv_wind_gen_data.csv', sun_rise=5, sun_set=17):
+
+    data =pd.read_csv(data_path)
+    data.rename(columns={'dtm': 'timestamp',   'Wind_MWh_credit': 'WindGen(MWh)', 'Solar_MWh_credit': 'PVGen(MWh)'}, inplace=True)
+    data=data[['timestamp', 'WindSpeed', 'Radiation',  'Season','WindGen(MWh)', 'PVGen(MWh)']]
+    data.index.name = 'timestamp' 
+    data = data.set_index("timestamp")
+    
+    data.index = pd.to_datetime(data.index, utc=True).tz_localize(None)
+    data = data.resample(rule='30T', closed='left', label='right').mean()
+    data = data[~data.index.duplicated(keep='first')]
+    data = data.asfreq('30min')
+    data = data.sort_index()
+    
+    # Forward fill missing values
+    data.ffill(inplace=True)
+    
+    data.index.name = 'timestamp'
+    data = add_exogenous_variables(data.reset_index(), one_hot=False)
+    data = data.set_index("timestamp").copy()
+    
+    def day_night(x):
+        if (x > sun_rise) and (x <= sun_set):
+            return 1
+        else:
+            return 0
+    
+    data['Session']=data['HOUR'].apply(day_night).values.astype(int)
+    return data
+
 
 # Load weather data
 def load_solar_radiation_PT():

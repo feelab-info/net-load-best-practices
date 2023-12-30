@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+
 import torch
 import optuna
 import pytorch_lightning as pl
@@ -13,71 +14,17 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, RichProg
 from pytorch_lightning.callbacks.progress.rich_progress import RichProgressBarTheme
 from pytorch_lightning import loggers
 from pathlib import Path
-from .utils import get_latest_checkpoint, inverse_scaling, DictLogger
+from .utils import get_latest_checkpoint, inverse_scaling, DictLogger, get_prediction_from_mlpf
 from timeit import default_timer
 from utils.data import  TimeSeriesDataset, TimeSeriesLazyDataset, DataLoader, TimeseriesDataModule
-from utils.data_processing import get_index
+from utils.data_processing import get_index, add_exogenous_variables, fourier_series_t
 from baselines.evaluation import evaluate_point_forecast
 from .embending import Rotary
-from .layers import FeedForward, activations, FutureEncoder, PastEncoder,  create_linear, MLPBlock
+from .layers import FeedForward, activations, FutureEncoder, PastEncoder,  create_linear, MLPBlock, MLPForecastNetwork
 torch.set_float32_matmul_precision('high')
 
 
-class MLPForecastNetwork(nn.Module):
-       
-    def __init__(self, hparams):
-        super().__init__()
-        self.n_out = len(hparams['targets'])
-        self.n_unknown=len(hparams['time_varying_unknown_feature']) + self.n_out
-        self.n_covariates=2*len(hparams['time_varying_known_categorical_feature']) + len(hparams['time_varying_known_feature'])
-        self.n_channels=self.n_unknown+self.n_covariates
-        
-        self.encoder = PastEncoder(hparams,   self.n_channels)
-        self.horizon = FutureEncoder(hparams, self.n_covariates)
-        self.hparams = hparams
-        self.decoder = nn.Sequential(FeedForward(hparams['latent_size'],
-                                                      expansion_factor=1, 
-                                                      dropout=hparams['dropout'], 
-                                                      activation=activations[hparams['activation']], bn=True))
-                                     
-        
-        
 
-        
-        self.activation =activations[hparams['activation']]
-        self.gate = nn.Linear(2*hparams['latent_size'], hparams['latent_size'])
-        self.mu = nn.Linear(hparams['latent_size'], self.n_out*hparams['horizon'])
-    
-    
-
-    
-    def forecast(self, x):
-    
-        with torch.no_grad():
-            pred = self(x)
-        
-        return dict(pred=pred)
-    
-        
-    def forward(self, x):
-        
-        B = x.size(0)
-         
-        f = self.encoder(x[:,:self.hparams['window_size'], :])
-        h = self.horizon(x[:,self.hparams['window_size']:, self.n_unknown:])
-        gate = self.gate(torch.cat((h, f), -1)).sigmoid()
-        z = (1-gate)*f + gate*h
-        z = self.decoder(z)
-        loc = self.mu(z).reshape(B, -1, self.n_out)
-        return loc
-    
-    def step(self, batch, metric_fn):
-        x, y = batch
-        B = x.size(0)
-        y_pred = self(x)
-        loss = self.hparams['alpha']*F.mse_loss(y_pred, y) + (1-self.hparams['alpha'])*F.l1_loss(y_pred, y)
-        metric=metric_fn(y_pred, y) 
-        return loss, metric
 
 
 class MLPForecastModel(pl.LightningModule):
@@ -241,6 +188,34 @@ class MLPForecast(object):
             return train_walltime
         
     
+    def predict_from_df(self, test_df,  experiment=None,  test=True):
+        
+        path_best_model = get_latest_checkpoint(self.checkpoints)
+        self.model = self.model.load_from_checkpoint(path_best_model)
+        start_time = default_timer()
+        self.model.eval()  
+        pred_df=get_prediction_from_mlpf(test_df, self.model, self.hparams, experiment)
+        test_walltime = default_timer() - start_time
+        
+        
+        Ndays = len(pred_df)//self.hparams['horizon']
+        loc = pred_df['pred'].values
+        target = pred_df['true'].values
+        index = pred_df.index.values
+        loc = loc.reshape(Ndays,  self.hparams['horizon'], -1)
+        target = target.reshape(Ndays,  self.hparams['horizon'], -1)
+        index = index.reshape(Ndays,  self.hparams['horizon'], -1)
+        
+        outputs = {}
+        outputs['pred'] = loc
+        outputs['index']=index
+        outputs['true']=target
+        
+        outputs['test-time']=test_walltime
+        outputs['target-range']=experiment.installed_capacity
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name=self.file_name, show_fig=False)
+        np.save(f"{self.results_path}/{self.file_name}_processed_results.npy", outputs)
+        return outputs
         
 
     def predict(self, test_df,  experiment=None,  test=True):
@@ -269,7 +244,7 @@ class MLPForecast(object):
         outputs['pred']=inverse_scaling(outputs['pred'], experiment.target_transformer)
         outputs['true']=inverse_scaling(outputs['true'], experiment.target_transformer)
         outputs['target-range']=experiment.installed_capacity
-        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name,  show_fig=False)
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name=self.file_name, show_fig=False)
         np.save(f"{self.results_path}/{self.file_name}_processed_results.npy", outputs)
         return outputs
     

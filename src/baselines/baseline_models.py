@@ -49,7 +49,7 @@ class BaselineDNNModel(object):
         if hparams['encoder_type'] in ['CATBOOST', 'RF', 'LREGRESS']:
             model = self.get_conventional_baseline_model(hparams)
 
-        if hparams['encoder_type'] in ['TimesNet', 'PatchTST']:
+        if hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
             model = self.get_neuralforecast_baseline(hparams)
         return model
             
@@ -106,8 +106,6 @@ class BaselineDNNModel(object):
         self.hparams=hparams
         models = []
         period=int(24*60/hparams['horizon'])
-        
-        print(f'Autotune get_neuralforecast_baseline is {hparams["autotune"]}')
 
         if hparams['encoder_type']=='TimesNet':
             if(hparams['autotune']):

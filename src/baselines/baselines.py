@@ -144,6 +144,9 @@ class DeterministicBaselineForecast(object):
         
         
     def prepare_data(self, experiment, train_df, test_df, val_df=None):
+        
+        
+       
 
         # Handle for Mac GPU
         if torch.backends.mps.is_available():
@@ -242,6 +245,7 @@ class DeterministicBaselineForecast(object):
         loc = loc.reshape(Ndays,  self.hparams['horizon'], -1)
         
         outputs = {}
+        
         outputs['pred'] = loc
         outputs['index']=self.index[:, self.hparams['window_size']:]
         outputs['true']=target
@@ -253,12 +257,12 @@ class DeterministicBaselineForecast(object):
         for k in ['pred',   'true']:
             outputs[k]=self.inverse_scaling(outputs[k], self.target_transformer)
             
-        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, show_fig=False)
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name=file_name, show_fig=False)
         return outputs
     
     
     def post_process_nixtla_pred(self, pred_df, train_walltime, test_walltime, file_name):
-        print(pred_df.shape)
+        
         Ndays = len(pred_df)//self.hparams['horizon']
         if self.hparams['autotune']:
             loc = pred_df['Auto'+self.hparams['encoder_type']].values
@@ -279,7 +283,7 @@ class DeterministicBaselineForecast(object):
         outputs['target-range']=self.target_range
         #outputs['inputs']= features
        
-        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name,  show_fig=False)
+        outputs = evaluate_point_forecast(outputs, outputs['target-range'], self.hparams, self.exp_name, file_name=file_name, show_fig=False)
         return outputs
     
     
@@ -310,7 +314,7 @@ class DeterministicBaselineForecast(object):
         Ndays = len(test_df)//hparams['horizon']
         all_predictions = []
         
-        for i in range(1, Ndays):
+        for i in range(Ndays):
 
             first_day_start = i*hparams['horizon']
             first_day_end = i*hparams['horizon']+ hparams['horizon']

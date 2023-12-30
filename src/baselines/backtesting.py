@@ -80,6 +80,7 @@ class BacktestingForecast(object):
                                             fit_scaler=False,
                                             exog_periods=self.exog_period)
         test_df = test_experiment.data
+      
         test_df.attrs['freq'] = pd.to_timedelta(int(24*60/hparams['horizon']), unit='T')
         test_df=test_df.reset_index()
 
@@ -98,8 +99,9 @@ class BacktestingForecast(object):
             size = int(len(train_df)*train_ratio)
             train_df, val_df = train_df.iloc[:size], train_df[size:]
             train_size= (train_ratio*len(train_df))/self.len
-            model.fit(train_df, val_df,  experiment)
-            outputs=model.predict(test_df, experiment)
+            train_walltime=model.fit(train_df, val_df,  experiment)
+            outputs=model.predict_from_df(test_df, experiment)
+            outputs['train-time']=train_walltime
         else:
             model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
             
@@ -118,7 +120,6 @@ class BacktestingForecast(object):
         outputs['train-size']=train_size
         np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
         metrics=outputs['NetLoad_metrics']
-        metrics['train-size']=train_size
         metrics[f'folds']=key
         return metrics
        
@@ -130,9 +131,9 @@ class BacktestingForecast(object):
         file_path=f"../results/{self.exp_name}/{hparams['encoder_type']}/best_params.npy"
         if os.path.exists(file_path):
             hparams.update(np.load(f"../results/{self.exp_name}/{hparams['encoder_type']}/best_params.npy", allow_pickle=True).item())
-            autotune=False
-        else:
-            autotune=True
+            #autotune=False
+        #else:
+           #autotune=True
 
         for train_df, test_df, scheme, key in self.generator.split():
     
