@@ -162,7 +162,7 @@ class DeterministicBaselineForecast(object):
         #check if train_df has no NAN
         assert train_df.isnull().sum().sum()==0, "Train data has NAN"
         assert test_df.isnull().sum().sum()==0, "Test data has NAN"
-        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'FEDformer' , 'RF', 'CATBOOST', 'LREGRESS', 'MSTL', 'SeasonalNaive']:
+        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'FEDformer', 'RF', 'CATBOOST', 'LREGRESS', 'MSTL', 'SeasonalNaive']:
             assert val_df.isnull().sum().sum()==0, "Val data has NAN"
 
         self.target_transformer = experiment.target_transformer
