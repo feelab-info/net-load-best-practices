@@ -10,10 +10,10 @@ import torch
 from .evaluation import evaluate_point_forecast
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from statsforecast import StatsForecast
-from neuralforecast.models import TimesNet, PatchTST, FEDformer, NHITS
+from neuralforecast.models import TimesNet, PatchTST, FEDformer, NHITS, RNN, NBEATS
 from neuralforecast import NeuralForecast
 from neuralforecast.losses.pytorch import MSE
-from neuralforecast.auto import AutoTimesNet, AutoPatchTST, AutoFEDformer
+from neuralforecast.auto import AutoTimesNet, AutoPatchTST, AutoFEDformer, AutoRNN, AutoNBEATS, AutoNHITS
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable training prints from optuna
 
@@ -22,14 +22,14 @@ optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable train
 class BaselineDNNModel(object):
     
     def get_model(self, hparams, path, callbacks):
-        if hparams['encoder_type']=='NHiTS':
-            model = self.get_nhits_model(hparams, path, callbacks)
+        # if hparams['encoder_type']=='NHiTS':
+        #     model = self.get_nhits_model(hparams, path, callbacks)
             
-        if hparams['encoder_type']=='NBEATS':
-            model = self.get_nbeats_model(hparams, path, callbacks)
+        # if hparams['encoder_type']=='NBEATS':
+        #     model = self.get_nbeats_model(hparams, path, callbacks)
             
-        if hparams['encoder_type']=='RNN':
-            model = self.get_rnn_model(hparams, path, callbacks)
+        # if hparams['encoder_type']=='RNN':
+        #     model = self.get_rnn_model(hparams, path, callbacks)
             
         if hparams['encoder_type']=='TCN':
             model = self.get_tcn_model(hparams, path, callbacks)
@@ -54,14 +54,14 @@ class BaselineDNNModel(object):
         return model
             
     def get_hyparams(self, trial, hparams):
-        if hparams['encoder_type']=='NHiTS':
-            params = self.get_nhits_search_params(trial, hparams)
+        # if hparams['encoder_type']=='NHiTS':
+        #     params = self.get_nhits_search_params(trial, hparams)
             
-        if hparams['encoder_type']=='NBEATS':
-            params = self.get_nbeats_search_params(trial, hparams)
+        # if hparams['encoder_type']=='NBEATS':
+        #     params = self.get_nbeats_search_params(trial, hparams)
             
-        if hparams['encoder_type']=='RNN':
-            params = self.get_rnn_search_params(trial, hparams)
+        # if hparams['encoder_type']=='RNN':
+        #     params = self.get_rnn_search_params(trial, hparams)
             
         if hparams['encoder_type']=='TCN':
             params = self.get_tcn_search_params(trial, hparams)
@@ -129,6 +129,7 @@ class BaselineDNNModel(object):
                             random_seed=hparams['random_seed'],
                             dropout=hparams['dropout'],
                             futr_exog_list= self.future_exog,
+                            hist_exog_list= self.future_exog,
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
                             early_stop_patience_steps=5
@@ -150,6 +151,8 @@ class BaselineDNNModel(object):
                 print('Running PatchTST..')
                 patchtst = PatchTST(h=hparams['horizon'],
                             input_size=hparams['window_size'],
+                            futr_exog_list= self.future_exog,
+                            hist_exog_list= self.future_exog,
                             patch_len=hparams['patch_len'],
                             stride=hparams['stride'],
                             revin=False,
@@ -180,6 +183,7 @@ class BaselineDNNModel(object):
                 fedformer = FEDformer(h=hparams['horizon'],
                             input_size=hparams['window_size'],
                             futr_exog_list= self.future_exog,
+                            hist_exog_list= self.future_exog,
                             hidden_size=hparams['hidden_size'],
                             conv_hidden_size = hparams['conv_hidden_size'],
                             n_heads=hparams['n_heads'],
@@ -191,6 +195,83 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5)
                 models.append(fedformer)
+
+        if hparams['encoder_type']=='RNN':
+            if(hparams['autotune']):
+                print('Running AutoRNN..')
+                auto_rnn = AutoRNN(
+                        h=hparams['horizon'],
+                        config=self.get_auto_rnn_search_params,
+                        search_alg=optuna.samplers.TPESampler(),
+                        backend='optuna',
+                        num_samples=hparams['num_trials']
+                    )
+                models.append(auto_rnn)
+            else:
+                print('Running RNN..')
+                rnn = RNN(h=hparams['horizon'],
+                            input_size=hparams['window_size'],
+                            futr_exog_list= self.future_exog,
+                            encoder_hidden_size = hparams['encoder_hidden_size'],
+                            encoder_n_layers=hparams['encoder_n_layers'],
+                            context_size=hparams['context_size'],
+                            decoder_hidden_size=hparams['decoder_hidden_size'],
+                            random_seed=hparams['random_seed'],
+                            learning_rate=hparams['learning_rate'],
+                            max_steps=hparams['max_epochs'],
+                            val_check_steps=50,
+                            early_stop_patience_steps=5)
+                models.append(rnn)
+
+        if hparams['encoder_type']=='NBEATS':
+            if(hparams['autotune']):
+                print('Running AutoNBEATS..')
+                auto_nbeats = AutoNBEATS(
+                        h=hparams['horizon'],
+                        config=self.get_auto_nbeats_search_params,
+                        search_alg=optuna.samplers.TPESampler(),
+                        backend='optuna',
+                        num_samples=hparams['num_trials']
+                    )
+                models.append(auto_nbeats)
+            else:
+                print('Running NBEATS..')
+                nbeats = NBEATS(h=hparams['horizon'],
+                            input_size=hparams['window_size'],
+                            windows_batch_size = hparams['windows_batch_size'],
+                            random_seed=hparams['random_seed'],
+                            learning_rate=hparams['learning_rate'],
+                            max_steps=hparams['max_epochs'],
+                            val_check_steps=50,
+                            early_stop_patience_steps=5)
+                models.append(nbeats)
+
+        if hparams['encoder_type']=='NHiTS':
+            if(hparams['autotune']):
+                print('Running AutoNHiTS..')
+                auto_nhits = AutoNHITS(
+                        h=hparams['horizon'],
+                        config=self.get_auto_nhits_search_params,
+                        search_alg=optuna.samplers.TPESampler(),
+                        backend='optuna',
+                        num_samples=hparams['num_trials']
+                    )
+                models.append(auto_nhits)
+            else:
+                print('Running NHiTS..')
+                nhits = NHITS(h=hparams['horizon'],
+                            input_size=hparams['window_size'],
+                            windows_batch_size = hparams['windows_batch_size'],
+                            futr_exog_list= self.future_exog,
+                            hist_exog_list= self.future_exog,
+                            n_pool_kernel_size=hparams['n_pool_kernel_size'],
+                            n_freq_downsample=hparams['n_freq_downsample'],
+                            random_seed=hparams['random_seed'],
+                            learning_rate=hparams['learning_rate'],
+                            max_steps=hparams['max_epochs'],
+                            val_check_steps=50,
+                            early_stop_patience_steps=5)
+                models.append(nhits)
        
         nf = NeuralForecast(
                     models=models,
@@ -588,6 +669,7 @@ class BaselineDNNModel(object):
             'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],
             'futr_exog_list':self.future_exog,
+            'hist_exog_list':self.future_exog,
             'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
             'conv_hidden_size':trial.suggest_categorical("conv_hidden_size", [16, 32, 64, 128, 256, 512] ),
             'learning_rate':trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
@@ -602,6 +684,7 @@ class BaselineDNNModel(object):
             'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],
             'futr_exog_list':self.future_exog,
+            'hist_exog_list':self.future_exog,
             'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
             'conv_hidden_size':trial.suggest_categorical("conv_hidden_size", [16, 32, 64, 128, 256, 512] ),
             'learning_rate':trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
@@ -612,29 +695,36 @@ class BaselineDNNModel(object):
         
         
     def get_auto_nhits_search_params(self, trial):
-        future_exog=self.hparams["time_varying_unknown_feature"]+self.hparams["time_varying_known_categorical_feature"]
         return {
             'max_steps': self.hparams["max-epochs"],
             'input_size': self.hparams["window_size"],
-            'futr_exog_list':future_exog,
-             'hist_exog_list':future_exog,
+            'futr_exog_list': self.future_exog,
+            'hist_exog_list': self.future_exog,
+            'val_check_steps': 25,
+            'n_pool_kernel_size': trial.suggest_categorical("n_pool_kernel_size", [[2, 2, 1], 3 * [1], 3 * [2], 3 * [4], [8, 4, 1], [16, 8, 1]]),
+            'n_freq_downsample': trial.suggest_loguniform("n_freq_downsample",[
+                [168, 24, 1], [24, 12, 1], [180, 60, 1], [60, 8, 1], [40, 20, 1], [1, 1, 1]]),
+            'windows_batch_size': trial.suggest_categorical("windows_batch_size", [128, 256, 512, 1024]),
             'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
-            'dropout': trial.suggest_float("dropout", 0.0, 0.5),
+            'random_seed':trial.suggest_int('random_seed', 1, 20),
         }
     
     def get_auto_nbeats_search_params(self, trial):
-        future_exog=self.hparams["time_varying_unknown_feature"]+self.hparams["time_varying_known_categorical_feature"]
         return {
             'max_steps': self.hparams["max-epochs"],
             'input_size': self.hparams["window_size"],
-            'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
-            'dropout': trial.suggest_float("dropout", 0.0, 0.5),
+            'windows_batch_size': trial.suggest_categorical("windows_batch_size", [128, 256, 512, 1024]),
+            'val_check_steps':25,
+            'learning_rate': trial.suggest_loguniform("learning_rate", 1e-4, 1e-1),
+            'random_seed':trial.suggest_int('random_seed', 1, 20),
         }
         
     def get_auto_patchtst_search_params(self, trial):
         return {
             'max_steps':self.hparams["max_epochs"],
             'input_size':self.hparams["window_size"],
+            'futr_exog_list':self.future_exog,
+            'hist_exog_list':self.future_exog,
             'patch_len':trial.suggest_categorical("patch_len", [16, 24, 32]),
             'n_heads':trial.suggest_categorical("n_heads", [4, 8, 16]),
             'revin':False,
@@ -646,6 +736,19 @@ class BaselineDNNModel(object):
             'random_seed':trial.suggest_int('random_seed', 1, 20),
         }
     
+    def get_auto_rnn_search_params(self, trial):
+        return {
+            'max_steps':self.hparams["max_epochs"],
+            'input_size':self.hparams["window_size"],
+            'futr_exog_list':self.future_exog,
+            'encoder_hidden_size': trial.suggest_categorical("encoder_hidden_size", [50, 100, 200, 300]),
+            'encoder_n_layers': trial.suggest_int('encoder_n_layers', 1, 4),
+            'context_size': trial.suggest_categorical("context_size", [5, 10, 50]),
+            "decoder_hidden_size":trial.suggest_categorical("decoder_hidden_size", [64, 128, 256, 512]),
+            'dropout': trial.suggest_float("dropout", 0.0, 0.5, step=0.1),
+            'learning_rate': trial.suggest_loguniform("learning_rate", 1e-4, 1e-1),
+            'random_seed':trial.suggest_int('random_seed', 1, 20),
+        }
     
     
     def get_nbeats_search_params(self, trial, params):

@@ -71,11 +71,11 @@ class DeterministicBaselineForecast(object):
         model = self.baseline_models.get_model(params, checkpoints, callback)
             
         start_time = default_timer()
-        if self.hparams['encoder_type'] in ['TFT', 'RNN', 'D-LINEAR', 'TRANSFORMER']:
+        if self.hparams['encoder_type'] in ['TFT', 'D-LINEAR', 'TRANSFORMER']: #'RNN'
             model.fit(self.train, future_covariates=self.train_cov, val_series=self.val, val_future_covariates=self.val_cov)
             
-        elif self.hparams['encoder_type'] in ['NHiTS', 'NBEATS']:
-            model.fit(self.train, past_covariates=self.train_cov, val_series=self.val, val_past_covariates=self.val_cov)
+        # elif self.hparams['encoder_type'] in ['NHiTS', 'NBEATS']:
+        #     model.fit(self.train, past_covariates=self.train_cov, val_series=self.val, val_past_covariates=self.val_cov)
             
         elif self.hparams['encoder_type'] in ['TCN']:
             model.fit(self.train,  val_series=self.val)
@@ -87,7 +87,7 @@ class DeterministicBaselineForecast(object):
             train_df=self.transform_darts_data(self.train, self.target_columns)
             model.fit(train_df)
 
-        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
+        elif self.hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
             train_df=self.transform_neuralforecast_data(self.train, self.hparams)
             model.fit(df=train_df, val_size=len(self.test))
             if self.hparams['autotune']:
@@ -100,20 +100,20 @@ class DeterministicBaselineForecast(object):
 
         
         start_time = default_timer()
-        if self.hparams['encoder_type'] in ['TFT', 'RNN', 'D-LINEAR', 'TRANSFORMER']:
+        if self.hparams['encoder_type'] in ['TFT', 'D-LINEAR', 'TRANSFORMER']: #'RNN'
             best_model =  model.load_from_checkpoint(model_name=self.hparams['encoder_type'], 
                                                          work_dir=checkpoints, best=True)
 
             pred =  best_model.predict(n=len(self.test),
                                         series=self.train.concatenate(self.val),
                                         future_covariates=self.covariates).values()
-        elif self.hparams['encoder_type'] in  ['NHiTS', 'NBEATS']:
-            best_model =  model.load_from_checkpoint(model_name=self.hparams['encoder_type'], 
-                                                         work_dir=checkpoints, best=True)
+        # elif self.hparams['encoder_type'] in  ['NHiTS', 'NBEATS']:
+        #     best_model =  model.load_from_checkpoint(model_name=self.hparams['encoder_type'], 
+        #                                                  work_dir=checkpoints, best=True)
 
-            pred =  best_model.predict(n=len(self.test),
-                                        series=self.train.concatenate(self.val),
-                                        past_covariates=self.covariates).values()
+        #     pred =  best_model.predict(n=len(self.test),
+        #                                 series=self.train.concatenate(self.val),
+        #                                 past_covariates=self.covariates).values()
         elif self.hparams['encoder_type'] in ['TCN']:
             best_model =  model.load_from_checkpoint(model_name=self.hparams['encoder_type'], 
                                                          work_dir=checkpoints, best=True)
@@ -128,12 +128,12 @@ class DeterministicBaselineForecast(object):
             pred = model.predict(h=len(self.test))
             pred = pred[self.hparams['encoder_type']].values
             
-        elif self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
+        elif self.hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
             test_df=self.transform_neuralforecast_data(self.test, self.hparams)
             pred = self.get_prediction_from_nixtlamodel(test_df, model, self.hparams)
             
         test_walltime = default_timer() - start_time
-        if self.hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
+        if self.hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
             ouputs=self.post_process_nixtla_pred(pred, train_walltime, test_walltime, file_name)
         else:
             ouputs=self.post_process_pred(pred, train_walltime, test_walltime, file_name)
@@ -162,7 +162,7 @@ class DeterministicBaselineForecast(object):
         #check if train_df has no NAN
         assert train_df.isnull().sum().sum()==0, "Train data has NAN"
         assert test_df.isnull().sum().sum()==0, "Test data has NAN"
-        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'FEDformer', 'RF', 'CATBOOST', 'LREGRESS', 'MSTL', 'SeasonalNaive']:
+        if self.hparams['encoder_type'] not in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer', 'RF', 'CATBOOST', 'LREGRESS', 'MSTL', 'SeasonalNaive']:
             assert val_df.isnull().sum().sum()==0, "Val data has NAN"
 
         self.target_transformer = experiment.target_transformer
@@ -179,7 +179,7 @@ class DeterministicBaselineForecast(object):
         
         covariates=experiment.seasonality_columns + self.hparams['time_varying_known_feature']
     
-        if self.hparams['encoder_type'] not in ['TimesNet', 'PatchTST', 'FEDformer']:
+        if self.hparams['encoder_type'] not in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
             self.train = TimeSeries.from_dataframe(train_df, 
                                                     'timestamp', 
                                                     self.target_columns,

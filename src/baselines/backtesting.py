@@ -105,7 +105,7 @@ class BacktestingForecast(object):
         else:
             model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
             
-            if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+            if hparams['encoder_type'] in ['D-LINEAR', 'TCN', 'TFT']: #'NHiTS', 'NBEATS', 'RNN'
                 size = int(len(train_df)*train_ratio)
                 train_df, val_df = train_df.iloc[:size], train_df[size:]
                 model.prepare_data(experiment, train_df, test_df, val_df)
@@ -204,7 +204,7 @@ class BacktestingForecast(object):
                 hparams.update({'autotune': autotune})
 
                 model = DeterministicBaselineForecast(exp_name=self.exp_name, file_name=file_name, hparams=hparams) 
-                if hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+                if hparams['encoder_type'] in ['D-LINEAR', 'TCN', 'TFT']: #'NHiTS', 'NBEATS', 'RNN'
                     size = int(len(train_df)*train_ratio)
                     train_df, val_df = train_df.iloc[:size], train_df[size:]
                     model.prepare_data(experiment, train_df, test_df, val_df)
@@ -215,12 +215,12 @@ class BacktestingForecast(object):
                 
                 
             
-                if autotune and hparams['encoder_type'] in ['D-LINEAR', 'NHiTS', 'NBEATS', 'RNN', 'TCN', 'TFT']:
+                if autotune and hparams['encoder_type'] in ['D-LINEAR', 'TCN', 'TFT']: #'NHiTS', 'NBEATS', 'RNN'
                     model.auto_tune_model(num_trials=hparams['num_trials'])
                     break
                 else:
                     outputs=model.fit(None, hparams, file_name=self.file_name)
-                    if autotune and hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
+                    if autotune and hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
                         break
                 
             
@@ -228,7 +228,7 @@ class BacktestingForecast(object):
                 np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
             metrics=outputs['NetLoad_metrics']
             metrics['train-size']=train_size
-            metrics[f'folds']=key+1
+            metrics['folds']=key+1
             bactestingting_metrics.append(metrics)
         if not autotune:
             bactestingting_metrics=pd.concat(bactestingting_metrics)

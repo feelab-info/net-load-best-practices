@@ -111,5 +111,10 @@ hparams =   {
                 'autotune': True,
                 'stride': 16,
                 'random_seed': 1,
+                'encoder_hidden_size': 200,
+                'context_size': 10,
+                'decoder_hidden_size': 200,
+                'encoder_n_layers': 2,
+                'windows_batch_size': 1024,
             }
 
