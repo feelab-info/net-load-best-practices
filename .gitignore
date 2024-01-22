@@ -170,3 +170,4 @@ cython_debug/
 /results
 /checkpoints
 /logs
+/notebook/lightning_logs
