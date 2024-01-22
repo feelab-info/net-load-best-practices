@@ -68,7 +68,7 @@ class DeterministicBaselineForecast(object):
             callback = [PyTorchLightningPruningCallback(trial, monitor="val_loss")]
         else:
             callback = None
-        model = self.baseline_models.get_model(params, checkpoints, callback)
+        model = self.baseline_models.get_model(params, checkpoints, callback, self.exp_name)
             
         start_time = default_timer()
         if self.hparams['encoder_type'] in ['TFT', 'D-LINEAR', 'TRANSFORMER']: #'RNN'

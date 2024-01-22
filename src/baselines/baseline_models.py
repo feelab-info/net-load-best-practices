@@ -5,15 +5,17 @@ from darts.models import  CatBoostModel,   LinearRegressionModel, RandomForest
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from timeit import default_timer
 from pytorch_lightning.callbacks import Callback, EarlyStopping
+from pytorch_lightning import loggers
 import numpy as np
+from pathlib import Path
 import torch
 from .evaluation import evaluate_point_forecast
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from statsforecast import StatsForecast
-from neuralforecast.models import TimesNet, PatchTST, FEDformer, NHITS, RNN, NBEATS
+from neuralforecast.models import TimesNet, PatchTST, FEDformer, NHITS, LSTM, NBEATS
 from neuralforecast import NeuralForecast
 from neuralforecast.losses.pytorch import MSE
-from neuralforecast.auto import AutoTimesNet, AutoPatchTST, AutoFEDformer, AutoRNN, AutoNBEATS, AutoNHITS
+from neuralforecast.auto import AutoTimesNet, AutoPatchTST, AutoFEDformer, AutoLSTM, AutoNBEATS, AutoNHITS
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable training prints from optuna
 
@@ -21,7 +23,10 @@ optuna.logging.set_verbosity(optuna.logging.WARNING) # Use this to disable train
 
 class BaselineDNNModel(object):
     
-    def get_model(self, hparams, path, callbacks):
+    def get_model(self, hparams, path, callbacks, exp_name):
+
+        self.exp_name = exp_name
+
         # if hparams['encoder_type']=='NHiTS':
         #     model = self.get_nhits_model(hparams, path, callbacks)
             
@@ -50,7 +55,7 @@ class BaselineDNNModel(object):
             model = self.get_conventional_baseline_model(hparams)
 
         if hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
-            model = self.get_neuralforecast_baseline(hparams)
+            model = self.get_neuralforecast_baseline(hparams, path)
         return model
             
     def get_hyparams(self, trial, hparams):
@@ -101,11 +106,17 @@ class BaselineDNNModel(object):
         return model
     
 
-    def get_neuralforecast_baseline(self, hparams):
+    def get_neuralforecast_baseline(self, hparams, path, wandb=False, root_dir='../../'):
         self.future_exog=hparams["time_varying_unknown_feature"]+hparams["time_varying_known_categorical_feature"]
         self.hparams=hparams
         models = []
         period=int(24*60/hparams['horizon'])
+
+        logs = Path(f"{root_dir}/logs/{self.exp_name}/{self.hparams['encoder_type']}/")
+        if not wandb:
+            logger  = loggers.TensorBoardLogger(logs,  name = self.exp_name) 
+        else:
+            logger = loggers.WandbLogger(project=self.exp_name, log_model="all")
 
         if hparams['encoder_type']=='TimesNet':
             if(hparams['autotune']):
@@ -132,8 +143,10 @@ class BaselineDNNModel(object):
                             hist_exog_list= self.future_exog,
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
-                            early_stop_patience_steps=5
-                        )
+                            early_stop_patience_steps=5,
+                            enable_checkpointing=True,
+                            logger=logger,
+                            default_root_dir=path)
                 models.append(timesnet)
             
         if hparams['encoder_type']=='PatchTST':
@@ -164,7 +177,10 @@ class BaselineDNNModel(object):
                             learning_rate=hparams['learning_rate'],
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
-                            early_stop_patience_steps=5)
+                            early_stop_patience_steps=5,
+                            enable_checkpointing=True,
+                            logger=logger,
+                            default_root_dir=path)
                 models.append(patchtst)
 
         if hparams['encoder_type']=='FEDformer':
@@ -193,35 +209,42 @@ class BaselineDNNModel(object):
                             learning_rate=hparams['learning_rate'],
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
-                            early_stop_patience_steps=5)
+                            early_stop_patience_steps=5,
+                            enable_checkpointing=True,
+                            logger=logger,
+                            default_root_dir=path)
                 models.append(fedformer)
 
-        if hparams['encoder_type']=='RNN':
+        if hparams['encoder_type']=='LSTM':
             if(hparams['autotune']):
-                print('Running AutoRNN..')
-                auto_rnn = AutoRNN(
+                print('Running AutoLSTM..')
+                auto_lstm = AutoLSTM(
                         h=hparams['horizon'],
-                        config=self.get_auto_rnn_search_params,
+                        config=self.get_auto_lstm_search_params,
                         search_alg=optuna.samplers.TPESampler(),
                         backend='optuna',
                         num_samples=hparams['num_trials']
                     )
-                models.append(auto_rnn)
+                models.append(auto_lstm)
             else:
-                print('Running RNN..')
-                rnn = RNN(h=hparams['horizon'],
+                print('Running LSTM..')
+                lstm = LSTM(h=hparams['horizon'],
                             input_size=hparams['window_size'],
                             futr_exog_list= self.future_exog,
                             encoder_hidden_size = hparams['encoder_hidden_size'],
                             encoder_n_layers=hparams['encoder_n_layers'],
                             context_size=hparams['context_size'],
                             decoder_hidden_size=hparams['decoder_hidden_size'],
+                            decoder_layers=hparams['decoder_layers'],
                             random_seed=hparams['random_seed'],
                             learning_rate=hparams['learning_rate'],
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
-                            early_stop_patience_steps=5)
-                models.append(rnn)
+                            early_stop_patience_steps=5,
+                            enable_checkpointing=True,
+                            logger=logger,
+                            default_root_dir=path)
+                models.append(lstm)
 
         if hparams['encoder_type']=='NBEATS':
             if(hparams['autotune']):
@@ -243,7 +266,10 @@ class BaselineDNNModel(object):
                             learning_rate=hparams['learning_rate'],
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
-                            early_stop_patience_steps=5)
+                            early_stop_patience_steps=5,
+                            enable_checkpointing=True,
+                            logger=logger,
+                            default_root_dir=path)
                 models.append(nbeats)
 
         if hparams['encoder_type']=='NHiTS':
@@ -270,7 +296,10 @@ class BaselineDNNModel(object):
                             learning_rate=hparams['learning_rate'],
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
-                            early_stop_patience_steps=5)
+                            early_stop_patience_steps=5,
+                            enable_checkpointing=True,
+                            logger=logger,
+                            default_root_dir=path)
                 models.append(nhits)
        
         nf = NeuralForecast(
@@ -736,7 +765,7 @@ class BaselineDNNModel(object):
             'random_seed':trial.suggest_int('random_seed', 1, 20),
         }
     
-    def get_auto_rnn_search_params(self, trial):
+    def get_auto_lstm_search_params(self, trial):
         return {
             'max_steps':self.hparams["max_epochs"],
             'input_size':self.hparams["window_size"],
@@ -744,7 +773,8 @@ class BaselineDNNModel(object):
             'encoder_hidden_size': trial.suggest_categorical("encoder_hidden_size", [50, 100, 200, 300]),
             'encoder_n_layers': trial.suggest_int('encoder_n_layers', 1, 4),
             'context_size': trial.suggest_categorical("context_size", [5, 10, 50]),
-            "decoder_hidden_size":trial.suggest_categorical("decoder_hidden_size", [64, 128, 256, 512]),
+            'decoder_hidden_size':trial.suggest_categorical("decoder_hidden_size", [64, 128, 256, 512]),
+            'decoder_layers':trial.suggest_categorical("decoder_layers", [2, 4, 8]),
             'dropout': trial.suggest_float("dropout", 0.0, 0.5, step=0.1),
             'learning_rate': trial.suggest_loguniform("learning_rate", 1e-4, 1e-1),
             'random_seed':trial.suggest_int('random_seed', 1, 20),
