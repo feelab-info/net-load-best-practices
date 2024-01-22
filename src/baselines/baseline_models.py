@@ -49,7 +49,7 @@ class BaselineDNNModel(object):
         if hparams['encoder_type'] in ['CATBOOST', 'RF', 'LREGRESS']:
             model = self.get_conventional_baseline_model(hparams)
 
-        if hparams['encoder_type'] in ['TimesNet', 'PatchTST', 'FEDformer']:
+        if hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
             model = self.get_neuralforecast_baseline(hparams)
         return model
             
@@ -129,7 +129,6 @@ class BaselineDNNModel(object):
                             random_seed=hparams['random_seed'],
                             dropout=hparams['dropout'],
                             futr_exog_list= self.future_exog,
-                            hist_exog_list= self.future_exog,
                             max_steps=hparams['max_epochs'],
                             val_check_steps=50,
                             early_stop_patience_steps=5
@@ -151,8 +150,6 @@ class BaselineDNNModel(object):
                 print('Running PatchTST..')
                 patchtst = PatchTST(h=hparams['horizon'],
                             input_size=hparams['window_size'],
-                            futr_exog_list= self.future_exog,
-                            hist_exog_list= self.future_exog,
                             patch_len=hparams['patch_len'],
                             stride=hparams['stride'],
                             revin=False,
@@ -183,7 +180,6 @@ class BaselineDNNModel(object):
                 fedformer = FEDformer(h=hparams['horizon'],
                             input_size=hparams['window_size'],
                             futr_exog_list= self.future_exog,
-                            hist_exog_list= self.future_exog,
                             hidden_size=hparams['hidden_size'],
                             conv_hidden_size = hparams['conv_hidden_size'],
                             n_heads=hparams['n_heads'],
@@ -261,7 +257,6 @@ class BaselineDNNModel(object):
                 print('Running NHiTS..')
                 nhits = NHITS(h=hparams['horizon'],
                             input_size=hparams['window_size'],
-                            windows_batch_size = hparams['windows_batch_size'],
                             futr_exog_list= self.future_exog,
                             hist_exog_list= self.future_exog,
                             n_pool_kernel_size=hparams['n_pool_kernel_size'],
@@ -377,7 +372,7 @@ class BaselineDNNModel(object):
                         layer_widths=hparams['latent_size'],
                         n_epochs=hparams['max_epochs'],
                         batch_size=hparams['batch_size'], 
-                        save_checkpoints=True, 
+                        save_=True, 
                         add_encoders=encoders if hparams['include_dayofweek'] else None,
                         force_reset=True,
                         work_dir=path, 
@@ -403,7 +398,7 @@ class BaselineDNNModel(object):
                         n_epochs=hparams['max_epochs'],
                         batch_size=hparams['batch_size'], 
                         dropout=hparams['dropout'],
-                        save_checkpoints=True, 
+                        save_=True, 
                         add_encoders=encoders if hparams['include_dayofweek'] else None,
                         force_reset=True,
                         optimizer_kwargs={"lr": hparams['lr']},
@@ -669,7 +664,6 @@ class BaselineDNNModel(object):
             'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],
             'futr_exog_list':self.future_exog,
-            'hist_exog_list':self.future_exog,
             'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
             'conv_hidden_size':trial.suggest_categorical("conv_hidden_size", [16, 32, 64, 128, 256, 512] ),
             'learning_rate':trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
@@ -684,7 +678,6 @@ class BaselineDNNModel(object):
             'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],
             'futr_exog_list':self.future_exog,
-            'hist_exog_list':self.future_exog,
             'hidden_size':trial.suggest_categorical("hidden_size", [16, 32, 64, 128, 256, 512] ),
             'conv_hidden_size':trial.suggest_categorical("conv_hidden_size", [16, 32, 64, 128, 256, 512] ),
             'learning_rate':trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
@@ -696,13 +689,13 @@ class BaselineDNNModel(object):
         
     def get_auto_nhits_search_params(self, trial):
         return {
-            'max_steps': self.hparams["max-epochs"],
+            'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],
             'futr_exog_list': self.future_exog,
             'hist_exog_list': self.future_exog,
             'val_check_steps': 25,
             'n_pool_kernel_size': trial.suggest_categorical("n_pool_kernel_size", [[2, 2, 1], 3 * [1], 3 * [2], 3 * [4], [8, 4, 1], [16, 8, 1]]),
-            'n_freq_downsample': trial.suggest_loguniform("n_freq_downsample",[
+            'n_freq_downsample': trial.suggest_categorical("n_freq_downsample",[
                 [168, 24, 1], [24, 12, 1], [180, 60, 1], [60, 8, 1], [40, 20, 1], [1, 1, 1]]),
             'windows_batch_size': trial.suggest_categorical("windows_batch_size", [128, 256, 512, 1024]),
             'learning_rate': trial.suggest_loguniform("learning_rate", 5e-4, 1e-3),
@@ -711,7 +704,7 @@ class BaselineDNNModel(object):
     
     def get_auto_nbeats_search_params(self, trial):
         return {
-            'max_steps': self.hparams["max-epochs"],
+            'max_steps': self.hparams["max_epochs"],
             'input_size': self.hparams["window_size"],
             'windows_batch_size': trial.suggest_categorical("windows_batch_size", [128, 256, 512, 1024]),
             'val_check_steps':25,
@@ -723,8 +716,6 @@ class BaselineDNNModel(object):
         return {
             'max_steps':self.hparams["max_epochs"],
             'input_size':self.hparams["window_size"],
-            'futr_exog_list':self.future_exog,
-            'hist_exog_list':self.future_exog,
             'patch_len':trial.suggest_categorical("patch_len", [16, 24, 32]),
             'n_heads':trial.suggest_categorical("n_heads", [4, 8, 16]),
             'revin':False,
@@ -745,7 +736,6 @@ class BaselineDNNModel(object):
             'encoder_n_layers': trial.suggest_int('encoder_n_layers', 1, 4),
             'context_size': trial.suggest_categorical("context_size", [5, 10, 50]),
             "decoder_hidden_size":trial.suggest_categorical("decoder_hidden_size", [64, 128, 256, 512]),
-            'dropout': trial.suggest_float("dropout", 0.0, 0.5, step=0.1),
             'learning_rate': trial.suggest_loguniform("learning_rate", 1e-4, 1e-1),
             'random_seed':trial.suggest_int('random_seed', 1, 20),
         }
