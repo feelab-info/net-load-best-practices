@@ -90,6 +90,7 @@ class DeterministicBaselineForecast(object):
         elif self.hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
             train_df=self.transform_neuralforecast_data(self.train, self.hparams)
             model.fit(df=train_df, val_size=len(self.test))
+            model.save(path=checkpoints, save_dataset=False, overwrite=True)
             if self.hparams['autotune']:
                 study = model.models[0].results
                 print(f"Best value: {study.best_value}, Best params: {study.best_params}")
@@ -129,6 +130,7 @@ class DeterministicBaselineForecast(object):
             pred = pred[self.hparams['encoder_type']].values
             
         elif self.hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
+            model = model.load(checkpoints)
             test_df=self.transform_neuralforecast_data(self.test, self.hparams)
             pred = self.get_prediction_from_nixtlamodel(test_df, model, self.hparams)
             
