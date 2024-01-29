@@ -195,8 +195,9 @@ class BacktestingForecast(object):
                     model.auto_tune_model(train_df=train_df, val_df=val_df, experiment=experiment, num_trials=hparams['num_trials'])
                     break
                 else:
-                    model.fit(train_df, val_df,  experiment)
-                    outputs=model.predict(test_df, experiment)
+                    training_time=model.fit(train_df, val_df,  experiment)
+                    outputs=model.predict(test_df, experiment, test=True)
+                    outputs['Train-time']=training_time
                     
                 
             else:
@@ -224,8 +225,8 @@ class BacktestingForecast(object):
                         break
                 
             
-                outputs['train-size']=train_size
-                np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
+            outputs['train-size']=train_size
+            np.save(f"../results/{self.exp_name}/{hparams['encoder_type']}/{file_name}_processed_results.npy", outputs)
             metrics=outputs['NetLoad_metrics']
             metrics['train-size']=train_size
             metrics['folds']=key+1

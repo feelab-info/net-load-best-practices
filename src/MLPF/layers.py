@@ -160,6 +160,9 @@ class PastEncoder(nn.Module):
             self.emb = PosEmbedding(n_channels, hparams['emb_size'], window_size=hparams['window_size'])
         elif hparams['embed_type'] == 'RotaryEmb':
             self.emb = RotaryEmbedding(hparams['emb_size'])
+        elif hparams['embed_type']=='CombinedEmb':
+            self.pos_emb = self.emb = PosEmbedding(n_channels, hparams['emb_size'], window_size=hparams['window_size'])
+            self.rotary_emb = RotaryEmbedding(hparams['emb_size'])
 
     def forward(self, x):
         """
@@ -175,10 +178,18 @@ class PastEncoder(nn.Module):
         x = self.norm(x)
 
         # Apply embedding based on the specified type
-        x = self.emb(x)
+        if self.hparams['embed_type']!='None':
+            if self.hparams['embed_type']=='CombinedEmb':
+                x = self.pos_emb(x) + self.rotary_emb(x)
+               
+            else:
+                x = self.emb(x)
+                
+            # Apply dropout to the embedded input
+            x = self.dropout(x)
+       
 
-        # Apply dropout to the embedded input
-        x = self.dropout(x)
+        
 
         # Pass the input through the encoder
         x = self.encoder(x)
@@ -226,6 +237,11 @@ class FutureEncoder(nn.Module):
             self.emb = PosEmbedding(n_channels, hparams['emb_size'], window_size=hparams['horizon'])
         elif hparams['embed_type'] == 'RotaryEmb':
             self.emb = RotaryEmbedding(hparams['emb_size'])
+        elif hparams['embed_type']=='CombinedEmb':
+            self.pos_emb = self.emb = PosEmbedding(n_channels, hparams['emb_size'], window_size=hparams['horizon'])
+            self.rotary_emb = RotaryEmbedding(hparams['emb_size'])
+        
+
 
     def forward(self, x):
         """
@@ -241,10 +257,17 @@ class FutureEncoder(nn.Module):
         x = self.norm(x)
 
         # Apply embedding based on the specified type
-        x = self.emb(x)
-
-        # Apply dropout to the embedded input
-        x = self.dropout(x)
+        
+        if self.hparams['embed_type']=='CombinedEmb':
+            x = self.pos_emb(x) + self.rotary_emb(x)
+            # Apply dropout to the embedded input
+            x = self.dropout(x)
+            
+        elif self.hparams['embed_type'] in ['PosEmb', 'RotaryEmb']:
+           
+            x = self.emb(x)
+            # Apply dropout to the embedded input
+            x = self.dropout(x)
 
         # Pass the input through the encoder
         x = self.encoder(x)
@@ -277,13 +300,18 @@ class MLPForecastNetwork(nn.Module):
 
         # Hyperparameters and components for decoding
         self.hparams = hparams
+        if hparams['comb_type']=='attn-comb':
+            self.attention = nn.MultiheadAttention(hparams['latent_size'], hparams['num_head'], dropout= hparams['dropout'])
+            
+        if hparams['comb_type']=='weighted-comb':
+             self.gate = nn.Linear(2 * hparams['latent_size'], hparams['latent_size'])
+            
         self.decoder = nn.Sequential(
             FeedForward(hparams['latent_size'], expansion_factor=1, dropout=hparams['dropout'],
                         activation=activations[hparams['activation']], bn=True)
         )
 
         self.activation = activations[hparams['activation']]
-        self.gate = nn.Linear(2 * hparams['latent_size'], hparams['latent_size'])
         self.mu = nn.Linear(hparams['latent_size'], self.n_out * hparams['horizon'])
 
     def forecast(self, x):
@@ -318,16 +346,19 @@ class MLPForecastNetwork(nn.Module):
 
         # Process future sequences with the horizon encoder
         h = self.horizon(x[:, self.hparams['window_size']:, self.n_unknown:])
+        if self.hparams['comb_type']=='attn-comb':
+            ph_hf = self.attention(h.unsqueeze(0), f.unsqueeze(0), f.unsqueeze(0))[0].squeeze(0)
+        elif self.hparams['comb_type']=='weighted-comb':
+            # Compute the gate mechanism
+            gate = self.gate(torch.cat((h, f), -1)).sigmoid()
+            # Combine past and future information using the gate mechanism
+            ph_hf = (1 - gate) * f + gate * h
+        else:
+            ph_hf = h + f
 
-        # Compute the gate mechanism
-        gate = self.gate(torch.cat((h, f), -1)).sigmoid()
-
-        # Combine past and future information using the gate mechanism
-        z = (1 - gate) * f + gate * h
-
+        
         # Decode the combined information
-        z = self.decoder(z)
-
+        z = self.decoder(ph_hf)
         # Compute the final output
         loc = self.mu(z).reshape(B, -1, self.n_out)
 

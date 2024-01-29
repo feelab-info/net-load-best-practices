@@ -267,9 +267,15 @@ class DeterministicBaselineForecast(object):
         
         Ndays = len(pred_df)//self.hparams['horizon']
         if self.hparams['autotune']:
-            loc = pred_df['Auto'+self.hparams['encoder_type']].values
+            if self.hparams['encoder_type'] == 'NHiTS':
+                loc = pred_df['Auto'+self.hparams['encoder_type'].upper()].values
+            else:
+                loc = pred_df['Auto'+self.hparams['encoder_type']].values
         else:
-            loc = pred_df[self.hparams['encoder_type']].values
+            if self.hparams['encoder_type'] == 'NHiTS':
+                loc = pred_df[self.hparams['encoder_type'].upper()].values
+            else:
+                loc = pred_df[self.hparams['encoder_type']].values
         target = pred_df['true'].values
         index = pred_df['ds'].values
         loc = loc.reshape(Ndays,  self.hparams['horizon'], -1)

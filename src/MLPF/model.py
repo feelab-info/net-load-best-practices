@@ -84,7 +84,7 @@ class MLPForecastModel(pl.LightningModule):
         
 
 class MLPForecast(object):
-    def __init__(self, hparams, exp_name="Tanesco", seed=42, root_dir="../", file_name=None, trial=None, metric='val_mae', wandb=False, rich_progress_bar=False):
+    def __init__(self, hparams, exp_name="Tanesco", seed=42, root_dir="../", file_name=None, trial=None, metric='val_mae', wandb=False, rich_progress_bar=True):
  
         self.seed = seed,
         pl.seed_everything(seed, workers=True)
