@@ -112,11 +112,11 @@ class BaselineDNNModel(object):
         models = []
         period=int(24*60/hparams['SAMPLES_PER_DAY'])
 
-        callback=[]
-        checkpoint_callback = ModelCheckpoint(dirpath=path, monitor='val_mae', mode='min', save_top_k=2)   
-        callback.append(checkpoint_callback)
-        lr_logger = LearningRateMonitor()
-        callback.append(lr_logger)
+        # callback=[]
+        # checkpoint_callback = ModelCheckpoint(dirpath=path, monitor='val_mae', mode='min', save_top_k=2)   
+        # callback.append(checkpoint_callback)
+        # lr_logger = LearningRateMonitor()
+        # callback.append(lr_logger)
 
         logs = Path(f"{root_dir}/logs/{self.exp_name}/{self.hparams['encoder_type']}/")
         if not wandb:
@@ -150,8 +150,7 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
-                            logger=logger,
-                            callbacks=callback)
+                            logger=logger)
                 models.append(timesnet)
             
         if hparams['encoder_type']=='PatchTST':
@@ -182,8 +181,7 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
-                            logger=logger,
-                            callbacks=callback)
+                            logger=logger)
                 models.append(patchtst)
 
         if hparams['encoder_type']=='FEDformer':
@@ -213,8 +211,7 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
-                            logger=logger,
-                            callbacks=callback)
+                            logger=logger)
                 models.append(fedformer)
 
         if hparams['encoder_type']=='LSTM':
@@ -244,8 +241,7 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
-                            logger=logger,
-                            callbacks=callback)
+                            logger=logger)
                 models.append(lstm)
 
         if hparams['encoder_type']=='NBEATS':
@@ -270,8 +266,7 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
-                            logger=logger,
-                            callbacks=callback)
+                            logger=logger)
                 models.append(nbeats)
 
         if hparams['encoder_type']=='NHiTS':
@@ -299,8 +294,7 @@ class BaselineDNNModel(object):
                             val_check_steps=50,
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
-                            logger=logger,
-                            callbacks=callback)
+                            logger=logger)
                 models.append(nhits)
        
         nf = NeuralForecast(
