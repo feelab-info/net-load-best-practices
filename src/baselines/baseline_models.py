@@ -4,7 +4,7 @@ from darts.models import TransformerModel, ExponentialSmoothing
 from darts.models import  CatBoostModel,   LinearRegressionModel, RandomForest
 from statsforecast.models import AutoARIMA, SeasonalNaive, MSTL
 from timeit import default_timer
-from pytorch_lightning.callbacks import Callback, EarlyStopping
+from pytorch_lightning.callbacks import Callback, EarlyStopping, ModelCheckpoint, LearningRateMonitor
 from pytorch_lightning import loggers
 import numpy as np
 from pathlib import Path
@@ -55,7 +55,7 @@ class BaselineDNNModel(object):
             model = self.get_conventional_baseline_model(hparams)
 
         if hparams['encoder_type'] in ['NHiTS', 'NBEATS', 'RNN', 'TimesNet', 'PatchTST', 'FEDformer']:
-            model = self.get_neuralforecast_baseline(hparams)
+            model = self.get_neuralforecast_baseline(hparams, path)
         return model
             
     def get_hyparams(self, trial, hparams):
@@ -112,6 +112,12 @@ class BaselineDNNModel(object):
         models = []
         period=int(24*60/hparams['SAMPLES_PER_DAY'])
 
+        callback=[]
+        checkpoint_callback = ModelCheckpoint(dirpath=path, monitor='val_mae', mode='min', save_top_k=2)   
+        callback.append(checkpoint_callback)
+        lr_logger = LearningRateMonitor()
+        callback.append(lr_logger)
+
         logs = Path(f"{root_dir}/logs/{self.exp_name}/{self.hparams['encoder_type']}/")
         if not wandb:
             logger  = loggers.TensorBoardLogger(logs,  name = self.exp_name) 
@@ -145,7 +151,7 @@ class BaselineDNNModel(object):
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
                             logger=logger,
-                            default_root_dir=path)
+                            callbacks=callback)
                 models.append(timesnet)
             
         if hparams['encoder_type']=='PatchTST':
@@ -177,7 +183,7 @@ class BaselineDNNModel(object):
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
                             logger=logger,
-                            default_root_dir=path)
+                            callbacks=callback)
                 models.append(patchtst)
 
         if hparams['encoder_type']=='FEDformer':
@@ -208,7 +214,7 @@ class BaselineDNNModel(object):
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
                             logger=logger,
-                            default_root_dir=path)
+                            callbacks=callback)
                 models.append(fedformer)
 
         if hparams['encoder_type']=='LSTM':
@@ -239,7 +245,7 @@ class BaselineDNNModel(object):
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
                             logger=logger,
-                            default_root_dir=path)
+                            callbacks=callback)
                 models.append(lstm)
 
         if hparams['encoder_type']=='NBEATS':
@@ -265,7 +271,7 @@ class BaselineDNNModel(object):
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
                             logger=logger,
-                            default_root_dir=path)
+                            callbacks=callback)
                 models.append(nbeats)
 
         if hparams['encoder_type']=='NHiTS':
@@ -294,7 +300,7 @@ class BaselineDNNModel(object):
                             early_stop_patience_steps=5,
                             enable_checkpointing=True,
                             logger=logger,
-                            default_root_dir=path)
+                            callbacks=callback)
                 models.append(nhits)
        
         nf = NeuralForecast(
